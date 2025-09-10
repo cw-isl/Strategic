@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>전략물자 1차 자가판별 (프로토타입)</title>
+  <style>
+    :root{--fg:#111;--muted:#666;--line:#ddd;--bg:#fff;--chip:#f6f6f6}
+    *{box-sizing:border-box} html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,Inter,"Noto Sans KR",sans-serif}
+    .container{max-width:880px;margin:0 auto;padding:24px}
+    h1{font-size:clamp(22px,3.5vw,28px);margin:0 0 8px}
+    p{margin:0}
+    .muted{color:var(--muted)}
+    .chips{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{display:inline-flex;align-items:center;border:1px solid #00000022;border-radius:999px;padding:2px 8px;font-size:12px;background:var(--chip)}
+    .card{border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 2px 6px #0000000a;background:#fff}
+    .row{display:flex;gap:12px;flex-wrap:wrap}
+    .btn{appearance:none;border-radius:16px;border:1px solid #00000030;background:#fff;padding:10px 16px;font-weight:600;cursor:pointer;transition:transform .04s ease, box-shadow .2s ease}
+    .btn:active{transform:translateY(1px)}
+    .btn.primary{background:#111;color:#fff;border-color:#111}
+    .btn.link{border-color:transparent;text-decoration:underline;color:#333}
+    .btn.ghost{color:#444}
+    .btn.success{background:#16a34a;color:#fff;border-color:#16a34a}
+    .progress{height:8px;border-radius:999px;background:#00000012;overflow:hidden}
+    .bar{height:8px;background:#111;width:0}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+    th{color:#555;font-weight:600}
+    .dotline{display:flex;gap:6px}
+    .dot{width:10px;height:10px;border-radius:999px;background:#00000020}
+    .dot.active{background:#00000060}
+    .dot.done{background:#000000cc}
+    .title-sm{font-size:12px;color:#555;margin-bottom:6px}
+    .title-lg{font-size:18px;font-weight:600;margin:0 0 6px}
+    .badge{display:inline-flex;align-items:center;border:1px solid #00000030;border-radius:999px;padding:2px 8px;font-size:12px}
+    .space{height:16px}
+    .sticky-actions{position:fixed;right:24px;bottom:24px;display:none;gap:8px;z-index:9999}
+    .sticky-actions .btn{box-shadow:0 6px 20px rgba(0,0,0,.18)}
+    @media print{.noprint{display:none}!important; body{background:#fff}}
+  </style>
+  <!-- Libraries for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;margin-bottom:20px">
+      <div>
+        <h1>전략물자 1차 자가판별 <span style="font-weight:400">(프로토타입)</span></h1>
+        <p class="muted" style="margin-top:6px;line-height:1.6">본 도구는 일반인을 위한 <b>사전 스크리닝</b> 용도입니다. 실제 수출입 전에는 반드시
+          <a href="https://yestrade.go.kr" target="_blank" rel="noreferrer">전략물자관리시스템(YES)</a>의 <b>공식 판정</b>을 받으세요.</p>
+      </div>
+      <div class="chips">
+        <span class="chip">10문항 · Yes/No</span>
+        <span class="chip">민감 품목 1차 체크</span>
+      </div>
+    </header>
+
+    <section style="margin-bottom:16px">
+      <div class="title-sm" style="display:flex;justify-content:space-between"><span>진행률</span><span id="pct">0%</span></div>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div class="dotline" id="dots" style="margin-top:10px"></div>
+    </section>
+
+    <main id="stage"></main>
+
+    <footer class="card" style="margin-top:24px">
+      <p class="title-sm" style="margin:0 0 6px"><b>중요 고지(Disclaimer)</b></p>
+      <p class="muted" style="line-height:1.6">본 도구는 일반 정보 제공 목적의 프로토타입이며 법률/행정 자문이 아닙니다. 실제 전략물자 해당 여부와 수출허가 필요성은 <b>관할기관의 공식 판정</b>에 따릅니다. 최신 기준/절차는 전략물자관리원 및 YES 공지를 확인하세요.</p>
+    </footer>
+  </div>
+
+  <!-- 화면 오른쪽 아래 고정 액션 (결과 단계에서만 보임) -->
+  <div id="stickyActions" class="sticky-actions noprint">
+    <button id="stickyPrint" class="btn">결과 인쇄</button>
+    <button id="stickyPdf" class="btn success">결과 PDF 다운로드</button>
+  </div>
+
+  <script>
+  // ===== 데이터 =====
+  const QUESTIONS = [
+    {id:"q1", title:"소재/품목 분류", text:"해당 품목이 금속·합금·화학물질·전자부품·정밀장비 등 통제대상 가능성이 높은 범주에 해당하나요?"},
+    {id:"q2", title:"이중용도(Dual-use)", text:"민수용과 군수용(국방·안보 관련)으로 모두 사용될 가능성이 있나요?"},
+    {id:"q3", title:"분류번호 확인", text:"HS Code나 수출통제번호(ECCN 등) 조회 시 전략물자 목록과 유사/연관 항목으로 확인되었나요?"},
+    {id:"q4", title:"최종 사용처(End-Use)", text:"최종 사용 목적에 군사·미사일·원자력·우주산업·무인항공기 등 민감 영역이 포함되나요?"},
+    {id:"q5", title:"최종 사용자(End-User)", text:"거래 상대방이 제재 대상(개인·기업·기관) 또는 군 관련 기관일 가능성이 있나요?"},
+    {id:"q6", title:"핵심 성능 임계치", text:"속도·출력·압력·해상도·감도 등 핵심 스펙이 특정 임계치를 초과하나요?"},
+    {id:"q7", title:"WMD 관련성", text:"핵·생화학 물질, 방사성 동위원소, 병원체 등 대량살상무기(WMD) 관련 가능성이 있나요?"},
+    {id:"q8", title:"원산지·경유지", text:"전략물자 통제 또는 우회경유 위험이 높은 국가가 원산지·경유지·최종목적지에 포함되나요?"},
+    {id:"q9", title:"과거 허가·판정 이력", text:"동일/유사 품목으로 과거 정부 허가 또는 전략물자 판정을 받은 적이 있나요?"},
+    {id:"q10", title:"공식 조회(YES)", text:"전략물자관리시스템(YES)에서 품목 판정(또는 사전판정) 조회를 진행했나요?"},
+  ];
+
+  // ===== 상태 =====
+  const state = { step: 0, answers: Object.fromEntries(QUESTIONS.map(q=>[q.id,null])) };
+  const total = QUESTIONS.length;
+
+  // ===== 유틸 =====
+  const $ = (sel,ctx=document)=>ctx.querySelector(sel);
+  const el = (tag, cls, txt) => { const n=document.createElement(tag); if(cls) n.className=cls; if(txt!=null) n.textContent=txt; return n; };
+  const yesCount = () => Object.values(state.answers).filter(v=>v===true).length;
+  const progressPct = () => Math.round((Math.min(state.step, total) / total) * 100);
+
+  function renderDots(){
+    const wrap = $("#dots");
+    wrap.innerHTML = "";
+    for(let i=0;i<total;i++){
+      const d = el('div','dot'+(i<state.step?' done':(i===state.step?' active':'')));
+      wrap.appendChild(d);
+    }
+  }
+
+  // ---- PDF 내보내기 (html2canvas + jsPDF) ----
+  function exportPDF(){
+    if(!window.jspdf || !window.html2canvas){
+      alert("PDF 라이브러리를 불러오지 못했습니다. 인터넷 연결 상태를 확인해주세요.");
+      return;
+    }
+    const exportArea = document.getElementById('exportArea');
+    if(!exportArea){
+      alert("결과 화면에서만 다운로드할 수 있어요. 문답을 마친 뒤 다시 시도해주세요.");
+      return;
+    }
+
+    const margin = 42; // 15mm
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF('p','pt','a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - margin*2;
+    const contentHeight = pageHeight - margin*2;
+
+    window.html2canvas(exportArea, {scale: 2, background: '#ffffff', useCORS: true}).then(canvas => {
+      const imgWidth = contentWidth;
+      const imgHeight = canvas.height * imgWidth / canvas.width;
+
+      if(imgHeight <= contentHeight){
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
+      } else {
+        // 여러 페이지로 분할
+        const pageCanvas = document.createElement('canvas');
+        const pageCtx = pageCanvas.getContext('2d');
+        const pageHeightPx = Math.floor(canvas.width * (contentHeight / imgWidth));
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = pageHeightPx;
+
+        let renderedHeight = 0;
+        while(renderedHeight < canvas.height){
+          pageCtx.clearRect(0,0,pageCanvas.width,pageCanvas.height);
+          pageCtx.drawImage(canvas, 0, renderedHeight, canvas.width, pageHeightPx, 0, 0, canvas.width, pageHeightPx);
+          const imgData = pageCanvas.toDataURL('image/png');
+          if(renderedHeight > 0) pdf.addPage();
+          pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, contentHeight);
+          renderedHeight += pageHeightPx;
+        }
+      }
+
+      const stamp = new Date().toISOString().slice(0,19).replace(/[-:T]/g,'');
+      pdf.save(`selfcheck_result_${stamp}.pdf`);
+    }).catch(err => {
+      console.error(err);
+      alert("PDF 생성 중 오류가 발생했습니다: " + err.message);
+    });
+  }
+
+  function renderStage(){
+    const stage = $("#stage");
+    stage.innerHTML = "";
+
+    // 진행률
+    $("#pct").textContent = progressPct()+"%";
+    $("#bar").style.width = progressPct()+"%";
+    renderDots();
+
+    // 고정 액션 초기화
+    const sticky = document.getElementById('stickyActions');
+    const stickyPrint = document.getElementById('stickyPrint');
+    const stickyPdf = document.getElementById('stickyPdf');
+    sticky.style.display = 'none';
+    stickyPrint.onclick = () => window.print();
+    stickyPdf.onclick = exportPDF;
+
+    if(state.step < total){
+      const q = QUESTIONS[state.step];
+      const card = el('div','card');
+
+      const meta = el('div','title-sm muted');
+      meta.innerHTML = `Q${String(state.step+1).padStart(2,'0')} · ${q.title}`;
+
+      const title = el('div','title-lg', q.text);
+      const tip = el('div','muted'); tip.style.fontSize='12px'; tip.style.marginBottom='12px'; tip.textContent = `💡 관련성/용도 등을 신중히 검토하세요.`;
+
+      const row = el('div','row');
+      const yesBtn = el('button','btn primary','Yes');
+      const noBtn = el('button','btn','No');
+      const skipBtn = el('button','btn ghost','건너뛰기'); skipBtn.title='일단 넘어갔다가 다시 돌아와도 됩니다';
+
+      yesBtn.onclick = ()=>{ state.answers[q.id]=true; setTimeout(()=>{state.step=Math.min(state.step+1,total); renderStage();},120); };
+      noBtn.onclick = ()=>{ state.answers[q.id]=false; setTimeout(()=>{state.step=Math.min(state.step+1,total); renderStage();},120); };
+      skipBtn.onclick = ()=>{ state.step=Math.min(state.step+1,total); renderStage(); };
+
+      row.append(yesBtn,noBtn,skipBtn);
+
+      const nav = el('div','muted'); nav.style.display='flex'; nav.style.justifyContent='space-between'; nav.style.marginTop='14px'; nav.style.fontSize='12px';
+      const prev = el('button','btn link','← 이전'); prev.onclick=()=>{state.step=Math.max(0,state.step-1); renderStage();};
+      const tally = el('div',null,`답변: ${yesCount()}개 Yes`);
+      nav.append(prev,tally);
+
+      card.append(meta,title,tip,row,nav);
+      stage.append(card);
+    } else {
+      // 결과 화면
+      sticky.style.display = 'flex'; // 고정 액션 보여주기
+
+      const ratio = yesCount()/total; let level='low', title='전략물자 가능성 낮음', note='리스크가 낮아 보이지만 핵심 포인트를 재확인하세요.';
+      if(ratio>=0.6){ level='high'; title='전략물자 가능성 높음'; note='공식 판정(YES) 및 수출허가 검토를 즉시 진행하세요.'; }
+      else if(ratio>=0.3){ level='mid'; title='전략물자 가능성 중간'; note='YES 사전판정과 스펙·경로 점검을 진행하세요.'; }
+
+      const exportWrap = el('div'); exportWrap.id = 'exportArea';
+
+      // --- 상단 결과 요약 카드 + 버튼 ---
+      const summary = el('div','card');
+      const smh = el('div','title-sm muted','결과 요약');
+      const h3 = el('h3',null,title); h3.style.margin='2px 0 8px'; h3.style.fontSize='22px';
+      const p = el('p','muted',note); p.style.lineHeight='1.6'; p.style.marginBottom='12px';
+
+      const stats = el('div'); stats.style.display='flex'; stats.style.alignItems='center'; stats.style.gap='14px';
+      const big = el('div',null, String(yesCount())); big.style.fontSize='28px'; big.style.fontWeight='800';
+      const small = el('div','muted',`/ ${total} 문항 Yes`);
+
+      const barWrap = el('div','progress'); barWrap.style.marginTop='14px';
+      const bar = el('div','bar'); bar.style.width = Math.round(ratio*100)+'%'; barWrap.append(bar);
+
+      const topActions = el('div','row noprint');
+      const printBtnTop = el('button','btn','결과 인쇄'); printBtnTop.onclick=()=>window.print();
+      const pdfBtnTop = el('button','btn success','결과 PDF 다운로드'); pdfBtnTop.onclick=exportPDF;
+      topActions.style.marginTop='12px';
+      topActions.append(printBtnTop,pdfBtnTop);
+
+      stats.append(big,small); summary.append(smh,h3,p,stats,barWrap,topActions);
+
+      // --- 답변 검토 테이블 ---
+      const table = el('div','card');
+      const th4 = el('h4',null,'답변 검토'); th4.style.margin='0 0 12px'; th4.style.fontSize='18px';
+      const wrap = el('div'); wrap.style.overflowX='auto';
+      const tbl = el('table');
+      tbl.innerHTML = `<thead><tr><th>문항</th><th>제목</th><th>답변</th></tr></thead>`;
+      const tbody = el('tbody');
+      QUESTIONS.forEach((q,i)=>{
+        const tr = el('tr');
+        const td1 = el('td',null,'Q'+String(i+1).padStart(2,'0'));
+        td1.style.color='#444';
+        const td2 = el('td'); td2.textContent = q.title;
+        const td3 = el('td');
+        const v = state.answers[q.id];
+        td3.innerHTML = v===null? '<span style="color:#999">(미응답)</span>' : (v? '<b>Yes</b>' : 'No');
+        tr.append(td1,td2,td3); tbody.append(tr);
+      });
+      tbl.append(tbody); wrap.append(tbl); table.append(th4,wrap);
+
+      exportWrap.append(summary, document.createElement('div'));
+      exportWrap.lastChild.className='space';
+      exportWrap.append(table);
+
+      // 하단 안내/리셋 카드
+      const actions = el('div','card noprint');
+      const h4 = el('h4',null,'다음 단계'); h4.style.margin='0 0 10px'; h4.style.fontSize='18px';
+      const ol = el('ol'); ol.style.paddingLeft='18px'; ol.style.lineHeight='1.6';
+      ol.innerHTML = `<li><a href="https://yestrade.go.kr" target="_blank" rel="noreferrer">전략물자관리시스템(YES)</a>에서 <b>품목(사전)판정</b>을 진행합니다.</li>
+                      <li><b>최종사용자/최종사용처/경유지</b> 문서를 정리하여 리스크를 재점검합니다.</li>
+                      <li>수출허가가 필요한 경우, 관할 기관 안내에 따라 <b>허가 신청</b>을 준비합니다.</li>`;
+      const btns = el('div'); btns.style.display='flex'; btns.style.flexWrap='wrap'; btns.style.gap='8px'; btns.style.marginTop='14px';
+      const reset = el('button','btn primary','다시 시작'); reset.onclick=()=>{state.step=0; state.answers=Object.fromEntries(QUESTIONS.map(q=>[q.id,null])); renderStage();};
+      const printBtn = el('button','btn', '결과 인쇄'); printBtn.onclick=()=>window.print();
+      const pdfBtn = el('button','btn success', '결과 PDF 다운로드'); pdfBtn.onclick=exportPDF;
+      btns.append(reset,printBtn,pdfBtn);
+      actions.append(h4,ol,btns);
+
+      stage.append(exportWrap, document.createElement('div')).lastChild.className='space';
+      stage.append(actions);
+    }
+  }
+
+  // 초기 렌더
+  renderStage();
+  </script>
+</body>
+</html>
