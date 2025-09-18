@@ -11,29 +11,27 @@
   <!-- 상단 탑바 -->
   <header class="topbar" role="navigation" aria-label="상단 내비게이션">
     <div class="topbar-inner">
-      <a class="tab" href="/" data-link aria-current="page">HOME</a>
-      <a class="tab" href="/export" data-link>수출 및 전략물자</a>
+      <a class="tab" href="/" data-link data-top="home" aria-current="page">HOME</a>
+      <div class="menu" data-menu>
+        <button class="tab menu-toggle" type="button" data-menu-button aria-haspopup="true" aria-expanded="false" aria-controls="top-menu-panel">
+          수출 및 전략물자
+        </button>
+        <div class="menu-panel" id="top-menu-panel" role="menu" hidden>
+          <a class="menu-item" href="/export" data-link role="menuitem">수출현황<span class="arrow" aria-hidden="true">▶</span></a>
+          <a class="menu-item" href="/strategic-check" data-link role="menuitem">전략물자 여부 체크<span class="arrow" aria-hidden="true">▶</span></a>
+          <a class="menu-item" href="/expert-certificate" data-link role="menuitem">전략물자 전문판정서<span class="arrow" aria-hidden="true">▶</span></a>
+          <a class="menu-item" href="/regulation" data-link role="menuitem">수출관리규정<span class="arrow" aria-hidden="true">▶</span></a>
+          <a class="menu-item" href="/settings" data-link role="menuitem">설정<span class="arrow" aria-hidden="true">▶</span></a>
+        </div>
+      </div>
       <div class="spacer"></div>
     </div>
   </header>
 
-  <!-- 레이아웃: 좌측 메뉴 + 본문 -->
-  <div class="layout">
-    <aside class="sidemenu" aria-label="좌측 메뉴">
-      <div class="menu-title">수출 및 전략물자</div>
-      <nav class="menu">
-        <button class="menu-item" data-link="/export">수출현황 <span>▶</span></button>
-        <button class="menu-item" disabled title="준비 중">전략물자 여부 체크 <span>▶</span></button>
-        <button class="menu-item" disabled title="준비 중">전문판정서 <span>▶</span></button>
-        <button class="menu-item" disabled title="준비 중">수출관리규정 <span>▶</span></button>
-        <button class="menu-item" disabled title="준비 중">설정 <span>▶</span></button>
-      </nav>
-    </aside>
-
-    <main id="app" class="content" tabindex="-1" aria-live="polite">
-      <!-- 라우팅된 화면 -->
-    </main>
-  </div>
+  <!-- 본문 -->
+  <main id="app" class="content" tabindex="-1" aria-live="polite">
+    <!-- 라우팅된 화면 -->
+  </main>
 
   <!-- 신규등록 모달 -->
   <dialog id="newExportDialog" aria-labelledby="newExportTitle">
