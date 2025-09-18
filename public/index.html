@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>수출 및 전략물자</title>
+  <meta name="description" content="수출 및 전략물자 - MVP" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- 상단 탑바 -->
+  <header class="topbar" role="navigation" aria-label="상단 내비게이션">
+    <div class="topbar-inner">
+      <a class="tab" href="/" data-link aria-current="page">HOME</a>
+      <a class="tab" href="/export" data-link>수출 및 전략물자</a>
+      <div class="spacer"></div>
+    </div>
+  </header>
+
+  <!-- 레이아웃: 좌측 메뉴 + 본문 -->
+  <div class="layout">
+    <aside class="sidemenu" aria-label="좌측 메뉴">
+      <div class="menu-title">수출 및 전략물자</div>
+      <nav class="menu">
+        <button class="menu-item" data-link="/export">수출현황 <span>▶</span></button>
+        <button class="menu-item" disabled title="준비 중">전략물자 여부 체크 <span>▶</span></button>
+        <button class="menu-item" disabled title="준비 중">전문판정서 <span>▶</span></button>
+        <button class="menu-item" disabled title="준비 중">수출관리규정 <span>▶</span></button>
+        <button class="menu-item" disabled title="준비 중">설정 <span>▶</span></button>
+      </nav>
+    </aside>
+
+    <main id="app" class="content" tabindex="-1" aria-live="polite">
+      <!-- 라우팅된 화면 -->
+    </main>
+  </div>
+
+  <!-- 신규등록 모달 -->
+  <dialog id="newExportDialog" aria-labelledby="newExportTitle">
+    <form id="newExportForm" method="dialog" class="card">
+      <h3 id="newExportTitle">수출 신규등록</h3>
+      <div class="grid">
+        <label>품목<input name="item" required placeholder="예: 반도체 웨이퍼" /></label>
+        <label>수량<input name="qty" type="number" min="0" step="1" required /></label>
+        <label>단가(USD)<input name="unitPrice" type="number" min="0" step="0.01" required /></label>
+        <label>국가<input name="country" required placeholder="예: KR/US/JP/DE" /></label>
+        <label>상태
+          <select name="status" required>
+            <option value="대기">대기</option>
+            <option value="진행">진행</option>
+            <option value="완료">완료</option>
+          </select>
+        </label>
+      </div>
+      <menu class="dialog-actions">
+        <button type="reset" value="cancel">취소</button>
+        <button type="submit" value="confirm" class="primary">등록</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <footer class='footer'>
+    <small>© <span id="year"></span> Export MVP</small>
+  </footer>
+
+  <script src="/main.js" defer></script>
+</body>
+</html>
