@@ -4,15 +4,123 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $("#app");
 
+const menuContainer = $("[data-menu]");
+const menuButton = menuContainer?.querySelector("[data-menu-button]");
+const menuPanel = menuContainer?.querySelector(".menu-panel");
+
+const infoPageConfigs = {
+  "/strategic-check": {
+    title: "전략물자 여부 체크",
+    description: "전략물자 여부를 확인하기 위한 기본 절차와 체크리스트를 제공합니다.",
+    body: `
+      <ol class="info-list">
+        <li>품목 분류와 HS Code를 검토하세요.</li>
+        <li>전략물자 판정 기준표와 비교하여 해당 여부를 확인합니다.</li>
+        <li>판정이 어려운 경우 담당 부서에 전문가 상담을 요청합니다.</li>
+      </ol>
+      <p class="info-note">체크 결과는 내부 기록으로 남겨 추후 감사 대비에 활용할 수 있습니다.</p>
+    `,
+  },
+  "/expert-certificate": {
+    title: "전략물자 전문판정서",
+    description: "전문판정서 신청 절차와 준비 서류를 빠르게 확인하세요.",
+    body: `
+      <ul class="info-list">
+        <li>필수 서류: 신청서, 품목 규격서, 거래계약서</li>
+        <li>평균 처리 기간: 5~7 영업일</li>
+        <li>진행 상황은 담당자 알림으로 안내됩니다.</li>
+      </ul>
+    `,
+  },
+  "/regulation": {
+    title: "수출관리규정",
+    description: "수출관리규정 전문과 최신 개정 사항을 확인하세요.",
+    body: `
+      <p class="info-note">규정 원문과 개정 이력은 내부 문서함에서 다운로드할 수 있습니다.</p>
+    `,
+  },
+  "/settings": {
+    title: "설정",
+    description: "개인화된 알림과 즐겨찾기 메뉴를 관리하세요.",
+    body: `
+      <ul class="info-list">
+        <li>즐겨찾는 대시보드와 메뉴를 지정합니다.</li>
+        <li>이메일 및 SMS 알림을 켜거나 끕니다.</li>
+        <li>팀 권한과 사용자 정보를 최신 상태로 유지하세요.</li>
+      </ul>
+    `,
+  },
+};
+
 const routes = {
   "/": renderHome,
   "/export": renderExport,
 };
 
+Object.entries(infoPageConfigs).forEach(([path, config]) => {
+  routes[path] = () => renderInfoPage(path, config);
+});
+
+const menuRoutes = new Set(["/export", ...Object.keys(infoPageConfigs)]);
+let menuOpen = false;
+
+function setMenuOpen(open = false) {
+  if (!menuContainer) return;
+  menuOpen = Boolean(open);
+  menuContainer.classList.toggle("open", menuOpen);
+  if (menuButton) {
+    menuButton.setAttribute("aria-expanded", menuOpen ? "true" : "false");
+  }
+  if (menuPanel) {
+    menuPanel.hidden = !menuOpen;
+  }
+}
+
+if (menuButton) {
+  menuButton.addEventListener("click", () => setMenuOpen(!menuOpen));
+}
+
+document.addEventListener("click", (event) => {
+  if (!menuOpen || !menuContainer) return;
+  if (menuContainer.contains(event.target)) return;
+  setMenuOpen(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && menuOpen) {
+    setMenuOpen(false);
+    menuButton?.focus();
+  }
+});
+
 function setTopbarActive(pathname) {
-  $$(".topbar .tab").forEach(a => {
-    a.setAttribute("aria-current", a.getAttribute("href") === pathname ? "page" : "false");
-  });
+  const homeTab = $("[data-top=\"home\"]");
+  if (homeTab) {
+    if (pathname === "/") {
+      homeTab.setAttribute("aria-current", "page");
+    } else {
+      homeTab.removeAttribute("aria-current");
+    }
+  }
+
+  if (menuButton) {
+    if (menuRoutes.has(pathname)) {
+      menuButton.setAttribute("data-active", "true");
+    } else {
+      menuButton.removeAttribute("data-active");
+    }
+  }
+
+  if (menuContainer) {
+    $$(".menu-item", menuContainer).forEach((item) => {
+      const href = item.getAttribute("href");
+      if (href === pathname) {
+        item.setAttribute("aria-current", "page");
+      } else {
+        item.removeAttribute("aria-current");
+      }
+    });
+  }
 }
 
 function renderHome() {
@@ -92,6 +200,19 @@ function renderExport() {
   app.focus();
 }
 
+function renderInfoPage(pathname, config) {
+  setTopbarActive(pathname);
+  document.title = `${config.title} | 수출 및 전략물자`;
+  app.innerHTML = `
+    <section class="card info-card">
+      <h1>${config.title}</h1>
+      <p class="page-description">${config.description}</p>
+      ${config.body ?? ""}
+    </section>
+  `;
+  app.focus();
+}
+
 async function fetchAndRender() {
   const q = $("#q")?.value?.trim() || "";
   const res = await fetch(`/api/exports?query=${encodeURIComponent(q)}`);
@@ -149,14 +270,22 @@ function openNewDialog() {
 
 /* Router */
 function navigate(pathname) {
+  setMenuOpen(false);
   if (location.pathname === pathname) return;
   window.history.pushState({}, "", pathname);
   render(pathname);
 }
 function render(pathname = location.pathname) {
-  (routes[pathname] || renderNotFound)();
+  setMenuOpen(false);
+  const handler = routes[pathname];
+  if (handler) {
+    handler();
+  } else {
+    renderNotFound();
+  }
 }
 function renderNotFound() {
+  setTopbarActive("");
   document.title = "404";
   app.innerHTML = `<section class="card"><h2>404</h2><p>페이지를 찾을 수 없습니다.</p></section>`;
   app.focus();
