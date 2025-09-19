@@ -64,11 +64,28 @@ app.post("/api/exports", (req, res) => {
   res.status(201).json({ ok: true, item: row });
 });
 
+/** --- 캐시 비활성화 유틸 --- */
+const setNoCacheHeaders = (res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+};
+
 /** --- 정적 파일 --- */
-app.use(express.static(path.join(__dirname, "public"), { maxAge: "1d", etag: true }));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    maxAge: 0,
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => {
+      setNoCacheHeaders(res);
+    },
+  })
+);
 
 /** --- SPA 라우팅 --- */
 app.get("*", (req, res) => {
+  setNoCacheHeaders(res);
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
