@@ -309,4 +309,4 @@ function escapeHtml(s){return s.replace(/[&<>"']/g,m=>({ "&":"&amp;","<":"&lt;",
 
 // 초기화
 $("#year").textContent = new Date().getFullYear();
-render("/");
+render(location.pathname || "/");
