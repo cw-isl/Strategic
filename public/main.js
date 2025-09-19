@@ -93,6 +93,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+setMenuOpen(false);
+
 function setTopbarActive(pathname) {
   const homeTab = $("[data-top=\"home\"]");
   if (homeTab) {
