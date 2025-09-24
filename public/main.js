@@ -170,8 +170,8 @@ function renderExport() {
       </div>
       <div class="header-actions">
         <button id="newBtn" class="btn primary" type="button">신규등록</button>
-        <button id="editBtn" class="btn" type="button">수정요청</button>
-        <button id="confirmBtn" class="btn" type="button">확인완료</button>
+        <button id="reportBtn" class="btn" type="button">수출신고</button>
+        <button id="pickupBtn" class="btn" type="button">픽업요청</button>
       </div>
     </section>
 
@@ -193,49 +193,46 @@ function renderExport() {
             <col class="col-receipt" />
             <col class="col-project" />
             <col class="col-project-code" />
-          <col class="col-item" />
-          <col class="col-spec" />
-          <col class="col-client" />
-          <col class="col-maker" />
-          <col class="col-qty" />
+            <col class="col-item" />
+            <col class="col-spec" />
+            <col class="col-client" />
+            <col class="col-maker" />
+            <col class="col-origin" />
+            <col class="col-terms" />
+            <col class="col-qty" />
+            <col class="col-unit-price" />
             <col class="col-country" />
-            <col class="col-incoterm" />
+            <col class="col-method" />
             <col class="col-port" />
             <col class="col-destination" />
             <col class="col-insurance" />
+            <col class="col-exporter" />
+            <col class="col-status" />
             <col class="col-note" />
-            <col class="col-progress" />
-            <col class="col-vessel" />
-            <col class="col-conversion" />
-            <col class="col-clearance" />
-            <col class="col-certificate" />
           </colgroup>
           <thead>
             <tr>
-              <th scope="col" rowspan="2">No</th>
-              <th scope="col" rowspan="2">접수일</th>
-              <th scope="col" rowspan="2">접수 No</th>
-              <th scope="col" rowspan="2">프로젝트명</th>
-              <th scope="col" rowspan="2">프로젝트코드</th>
-              <th scope="col" rowspan="2">품목명</th>
-              <th scope="col" rowspan="2">규격</th>
-              <th scope="col" rowspan="2">거래처</th>
-              <th scope="col" rowspan="2">제작사</th>
-              <th scope="col" rowspan="2">수량</th>
-              <th scope="col" rowspan="2">수출국가</th>
-              <th scope="col" rowspan="2">인도방법</th>
-              <th scope="col" rowspan="2">선적항</th>
-              <th scope="col" rowspan="2">행선항</th>
-              <th scope="col" rowspan="2">보험</th>
-              <th scope="col" rowspan="2">비고</th>
-              <th scope="colgroup" colspan="5">수출신고 진행</th>
-            </tr>
-            <tr>
-              <th scope="col">%</th>
-              <th scope="col">M/V/V/C</th>
-              <th scope="col">재고전환서류제출일</th>
-              <th scope="col">수리일자</th>
-              <th scope="col">신고필증 수취일</th>
+              <th scope="col">No</th>
+              <th scope="col">요청일</th>
+              <th scope="col">접수</th>
+              <th scope="col">프로젝트명</th>
+              <th scope="col">프로젝트코드</th>
+              <th scope="col">품명</th>
+              <th scope="col">규격</th>
+              <th scope="col">거래처</th>
+              <th scope="col">제작사</th>
+              <th scope="col">원산지</th>
+              <th scope="col">인도조건</th>
+              <th scope="col">수량</th>
+              <th scope="col">단가</th>
+              <th scope="col">수출국가</th>
+              <th scope="col">인도방법</th>
+              <th scope="col">선적항</th>
+              <th scope="col">도착항</th>
+              <th scope="col">보험유무</th>
+              <th scope="col">수출자</th>
+              <th scope="col">이행상태</th>
+              <th scope="col">비고</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -342,13 +339,18 @@ function renderRows(rows = [], meta = {}) {
     return;
   }
 
-  const numberFormatter = new Intl.NumberFormat("ko-KR");
+  const qtyFormatter = new Intl.NumberFormat("ko-KR");
+  const priceFormatter = new Intl.NumberFormat("ko-KR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
   tbody.innerHTML = rows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
       const createdDate = formatDate(row.createdAt);
-      const qty = formatNumber(row.qty, numberFormatter);
+      const qty = formatNumber(row.qty, qtyFormatter);
+      const unitPrice = formatNumber(row.unitPrice, priceFormatter);
       const item = row.item ? escapeHtml(String(row.item)) : "-";
       const country = row.country ? escapeHtml(String(row.country).toUpperCase()) : "-";
       const status = row.status ? escapeHtml(String(row.status)) : "-";
@@ -364,17 +366,17 @@ function renderRows(rows = [], meta = {}) {
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
           ${td(qty, { align: "right", empty: qty === "-" })}
+          ${td(unitPrice, { align: "right", empty: unitPrice === "-" })}
           ${td(country, { align: "center", empty: country === "-" })}
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
           ${td(status, { align: "left", empty: status === "-" })}
-          ${td("-", { align: "right", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
         </tr>
       `;
