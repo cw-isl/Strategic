@@ -75,13 +75,54 @@ h1,h2,h3{margin:0 0 .75rem}
   .header-actions{align-items:flex-end}
 }
 
+.header-actions{flex-wrap:wrap;justify-content:flex-end}
+
 /* Table */
 .table-wrap{margin-top:0;overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-.table-card table{min-width:720px}
-th,td{border:1px solid var(--line);padding:.5rem;vertical-align:middle}
+.table-card table{min-width:1500px}
+th,td{border:1px solid var(--line);padding:.55rem .6rem;vertical-align:middle;font-size:.85rem}
 th{background:#f5f5f5;text-align:left}
 tbody tr:hover{background:#fafcff}
+
+.export-table th{background:#e8eefc;text-align:center}
+.export-table thead tr:nth-child(2) th{background:#f4f7ff;font-size:.78rem}
+.export-table col.col-no{width:60px}
+.export-table col.col-date{width:120px}
+.export-table col.col-receipt{width:130px}
+.export-table col.col-project{width:180px}
+.export-table col.col-project-code{width:150px}
+.export-table col.col-item{width:220px}
+.export-table col.col-qty{width:90px}
+.export-table col.col-spec{width:150px}
+.export-table col.col-client{width:160px}
+.export-table col.col-maker{width:160px}
+.export-table col.col-country{width:110px}
+.export-table col.col-incoterm{width:130px}
+.export-table col.col-port{width:140px}
+.export-table col.col-destination{width:140px}
+.export-table col.col-insurance{width:120px}
+.export-table col.col-note{width:160px}
+.export-table col.col-progress{width:80px}
+.export-table col.col-vessel{width:150px}
+.export-table col.col-conversion{width:150px}
+.export-table col.col-clearance{width:150px}
+.export-table col.col-certificate{width:170px}
+.export-table td,.export-table th{white-space:nowrap}
+.export-table td{text-align:center}
+.export-table td[data-empty="true"]{color:#a3abbb}
+.export-table td.error{color:#d23c3c;font-weight:600;text-align:center}
+.export-table .text-left{text-align:left}
+.export-table .text-right{text-align:right}
+.export-table .text-center{text-align:center}
+
+.table-footer{margin-top:1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
+.result-count{margin:0;font-weight:600;color:#1f2a44}
+.pagination{display:flex;align-items:center;gap:.35rem}
+.pagination .page-info{font-weight:600;color:#153e8a;min-width:80px;text-align:center}
+.pagination .page-info[data-empty="true"]{color:#9397a3;font-weight:500}
+.page-btn{padding:.45rem .65rem;min-width:2.4rem;font-size:.85rem}
+.page-btn[disabled]{opacity:.45}
 
 /* Dialog */
 dialog{border:none;padding:0}
