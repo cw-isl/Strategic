@@ -105,11 +105,11 @@ tbody tr:hover{background:#fafcff}
 .export-table col.col-note{width:160px}
 .export-table col.col-progress{width:80px}
 .export-table col.col-vessel{width:150px}
-.export-table col.col-conversion{width:150px}
+.export-table col.col-conversion{width:200px}
 .export-table col.col-clearance{width:150px}
 .export-table col.col-certificate{width:170px}
-.export-table td,.export-table th{white-space:nowrap}
-.export-table td{text-align:center}
+.export-table th{white-space:normal;line-height:1.35}
+.export-table td{white-space:nowrap;text-align:center}
 .export-table td[data-empty="true"]{color:#a3abbb}
 .export-table td.error{color:#d23c3c;font-weight:600;text-align:center}
 .export-table .text-left{text-align:left}
