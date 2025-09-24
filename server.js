@@ -35,13 +35,41 @@ app.use(express.json());
 // 목록/검색
 app.get("/api/exports", (req, res) => {
   const q = (req.query.query || "").toString().trim().toLowerCase();
-  let items = exportsData.slice().sort((a,b)=>b.createdAt-a.createdAt);
+  const pageFromQuery = Number.parseInt(req.query.page, 10);
+  const sizeFromQuery = Number.parseInt(req.query.pageSize, 10);
+
+  const pageSize = Number.isNaN(sizeFromQuery)
+    ? 20
+    : Math.min(Math.max(sizeFromQuery, 1), 100);
+
+  let page = Number.isNaN(pageFromQuery) ? 1 : Math.max(pageFromQuery, 1);
+
+  let items = exportsData.slice().sort((a, b) => b.createdAt - a.createdAt);
   if (q) {
-    items = items.filter(row => {
-      return [row.item, row.country, row.status].some(v => String(v).toLowerCase().includes(q));
+    items = items.filter((row) => {
+      return [row.item, row.country, row.status].some((v) =>
+        String(v).toLowerCase().includes(q)
+      );
     });
   }
-  res.json({ ok: true, count: items.length, items });
+
+  const totalCount = items.length;
+  const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
+  if (totalPages > 0 && page > totalPages) {
+    page = totalPages;
+  }
+
+  const startIndex = totalPages === 0 ? 0 : (page - 1) * pageSize;
+  const pagedItems = items.slice(startIndex, startIndex + pageSize);
+
+  res.json({
+    ok: true,
+    totalCount,
+    totalPages,
+    page: totalPages === 0 ? 1 : page,
+    pageSize,
+    items: pagedItems,
+  });
 });
 
 // 신규 등록

@@ -4,6 +4,12 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $("#app");
 
+const PAGE_SIZE = 20;
+const EXPORT_TABLE_COLSPAN = 21;
+let currentPage = 1;
+let currentQuery = "";
+let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
+
 const menuContainer = $("[data-menu]");
 const menuButton = menuContainer?.querySelector("[data-menu-button]");
 const menuPanel = menuContainer?.querySelector(".menu-panel");
@@ -152,6 +158,10 @@ function renderExport() {
   setTopbarActive("/export");
   document.title = "수출현황 | 수출 및 전략물자";
 
+  currentPage = 1;
+  currentQuery = "";
+  lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
+
   app.innerHTML = `
     <section class="page-header">
       <div>
@@ -159,7 +169,9 @@ function renderExport() {
         <p class="page-description">등록된 수출 건을 검색하고 신규 데이터를 추가하세요.</p>
       </div>
       <div class="header-actions">
-        <button id="newBtn" class="btn primary">수출 신규등록</button>
+        <button id="newBtn" class="btn primary" type="button">신규등록</button>
+        <button id="editBtn" class="btn" type="button">수정·변경</button>
+        <button id="confirmBtn" class="btn" type="button">확인완료</button>
       </div>
     </section>
 
@@ -168,37 +180,89 @@ function renderExport() {
         <input id="q" type="text" placeholder="품목/국가/상태로 검색" aria-label="검색어" />
       </div>
       <div class="search-actions">
-        <button id="searchBtn" class="btn">Search</button>
+        <button id="searchBtn" class="btn" type="button">검색</button>
       </div>
     </section>
 
     <section class="card table-card">
       <div class="table-wrap">
-        <table aria-label="수출 목록">
+        <table class="export-table" aria-label="수출 목록">
+          <colgroup>
+            <col class="col-no" />
+            <col class="col-date" />
+            <col class="col-receipt" />
+            <col class="col-project" />
+            <col class="col-project-code" />
+            <col class="col-item" />
+            <col class="col-qty" />
+            <col class="col-spec" />
+            <col class="col-client" />
+            <col class="col-maker" />
+            <col class="col-country" />
+            <col class="col-incoterm" />
+            <col class="col-port" />
+            <col class="col-destination" />
+            <col class="col-insurance" />
+            <col class="col-note" />
+            <col class="col-progress" />
+            <col class="col-vessel" />
+            <col class="col-conversion" />
+            <col class="col-clearance" />
+            <col class="col-certificate" />
+          </colgroup>
           <thead>
             <tr>
-              <th style="width:60px;">no</th>
-              <th>품목</th>
-              <th style="width:100px;">수량</th>
-              <th style="width:120px;">단가(USD)</th>
-              <th style="width:120px;">금액(USD)</th>
-              <th style="width:110px;">국가</th>
-              <th style="width:110px;">상태</th>
-              <th style="width:160px;">등록일</th>
+              <th scope="col" rowspan="2">No</th>
+              <th scope="col" rowspan="2">접수일</th>
+              <th scope="col" rowspan="2">접수 No</th>
+              <th scope="col" rowspan="2">프로젝트명</th>
+              <th scope="col" rowspan="2">프로젝트코드</th>
+              <th scope="col" rowspan="2">품목명</th>
+              <th scope="col" rowspan="2">수량</th>
+              <th scope="col" rowspan="2">규격</th>
+              <th scope="col" rowspan="2">거래처</th>
+              <th scope="col" rowspan="2">제작사</th>
+              <th scope="col" rowspan="2">수출국가</th>
+              <th scope="col" rowspan="2">인도방법</th>
+              <th scope="col" rowspan="2">선적항</th>
+              <th scope="col" rowspan="2">행선항</th>
+              <th scope="col" rowspan="2">보험</th>
+              <th scope="col" rowspan="2">비고</th>
+              <th scope="colgroup" colspan="5">수출신고 진행</th>
+            </tr>
+            <tr>
+              <th scope="col">%</th>
+              <th scope="col">M/V/V/C</th>
+              <th scope="col">전환일자</th>
+              <th scope="col">수리일자</th>
+              <th scope="col">신고필증 수취일</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
         </table>
       </div>
+      <div class="table-footer">
+        <p id="resultCount" class="result-count" role="status" aria-live="polite">총 0건</p>
+        <div class="pagination" id="pagination" role="navigation" aria-label="페이지 이동"></div>
+      </div>
     </section>
   `;
 
   // 이벤트
-  $("#searchBtn").addEventListener("click", () => fetchAndRender());
-  $("#q").addEventListener("keydown", (e) => { if (e.key === "Enter") fetchAndRender(); });
+  const searchInput = $("#q");
+  $("#searchBtn").addEventListener("click", () => {
+    fetchAndRender({ query: searchInput?.value ?? "" });
+  });
+  searchInput?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      fetchAndRender({ query: searchInput.value });
+    }
+  });
   $("#newBtn").addEventListener("click", openNewDialog);
+  $("#pagination").addEventListener("click", onPaginationClick);
 
-  fetchAndRender();
+  fetchAndRender({ page: 1 });
   app.focus();
 }
 
@@ -215,27 +279,193 @@ function renderInfoPage(pathname, config) {
   app.focus();
 }
 
-async function fetchAndRender() {
-  const q = $("#q")?.value?.trim() || "";
-  const res = await fetch(`/api/exports?query=${encodeURIComponent(q)}`);
-  const data = await res.json();
+async function fetchAndRender({ page, query } = {}) {
+  if (typeof query === "string") {
+    currentQuery = query.trim();
+    currentPage = 1;
+  }
+
+  const targetPage = page ?? currentPage;
+  const params = new URLSearchParams({
+    query: currentQuery,
+    page: String(Math.max(targetPage, 1)),
+    pageSize: String(PAGE_SIZE),
+  });
+
+  try {
+    const res = await fetch(`/api/exports?${params.toString()}`);
+    if (!res.ok) throw new Error("목록을 불러오지 못했습니다.");
+
+    const data = await res.json();
+    const totalPages = Number(data.totalPages ?? 0);
+    const pageFromServer = totalPages === 0 ? 1 : Number(data.page ?? 1);
+
+    currentPage = pageFromServer;
+    lastMeta = {
+      totalPages,
+      totalCount: Number(data.totalCount ?? 0),
+      pageSize: Number(data.pageSize ?? PAGE_SIZE),
+    };
+
+    renderRows(data.items ?? [], { page: currentPage });
+    renderPagination();
+
+    const searchInput = $("#q");
+    if (searchInput && searchInput.value.trim() !== currentQuery) {
+      searchInput.value = currentQuery;
+    }
+  } catch (err) {
+    console.error(err);
+    const tbody = $("#tbody");
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="${EXPORT_TABLE_COLSPAN}" class="error">${escapeHtml(
+        err.message || "목록을 불러오지 못했습니다."
+      )}</td></tr>`;
+    }
+    const pagination = $("#pagination");
+    const resultCount = $("#resultCount");
+    if (pagination) pagination.innerHTML = "";
+    if (resultCount) resultCount.textContent = "총 0건";
+  }
+}
+
+function renderRows(rows = [], meta = {}) {
   const tbody = $("#tbody");
-  tbody.innerHTML = data.items.map((row, idx) => {
-    const no = row.id;
-    const amount = (row.qty * row.unitPrice).toFixed(2);
-    return `
-      <tr>
-        <td>${no}</td>
-        <td>${escapeHtml(row.item)}</td>
-        <td>${row.qty}</td>
-        <td>${row.unitPrice.toFixed(2)}</td>
-        <td>${amount}</td>
-        <td>${escapeHtml(row.country)}</td>
-        <td>${escapeHtml(row.status)}</td>
-        <td>${new Date(row.createdAt).toLocaleString()}</td>
-      </tr>
+  if (!tbody) return;
+
+  const page = meta.page ?? 1;
+  const pageSize = lastMeta.pageSize ?? PAGE_SIZE;
+  const startIndex = (page - 1) * pageSize;
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="${EXPORT_TABLE_COLSPAN}" data-empty="true">데이터가 없습니다.</td></tr>`;
+    return;
+  }
+
+  const numberFormatter = new Intl.NumberFormat("ko-KR");
+
+  tbody.innerHTML = rows
+    .map((row, idx) => {
+      const seq = startIndex + idx + 1;
+      const createdDate = formatDate(row.createdAt);
+      const qty = formatNumber(row.qty, numberFormatter);
+      const item = row.item ? escapeHtml(String(row.item)) : "-";
+      const country = row.country ? escapeHtml(String(row.country).toUpperCase()) : "-";
+      const status = row.status ? escapeHtml(String(row.status)) : "-";
+
+      return `
+        <tr>
+          ${td(String(seq), { align: "center" })}
+          ${td(createdDate, { empty: createdDate === "-" })}
+          ${td("-", { empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td(item, { align: "left", empty: item === "-" })}
+          ${td(qty, { align: "right", empty: qty === "-" })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td(country, { align: "center", empty: country === "-" })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td(status, { align: "left", empty: status === "-" })}
+          ${td("-", { align: "right", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderPagination() {
+  const pagination = $("#pagination");
+  const resultCount = $("#resultCount");
+  if (!pagination || !resultCount) return;
+
+  const totalCount = lastMeta.totalCount ?? 0;
+  const totalPages = lastMeta.totalPages ?? 0;
+  resultCount.textContent = `총 ${totalCount.toLocaleString("ko-KR")}건`;
+
+  if (totalPages === 0) {
+    pagination.innerHTML = `
+      <div class="page-info" data-empty="true">0 / 0</div>
     `;
-  }).join("") || `<tr><td colspan="8" style="text-align:center;color:#777;">데이터가 없습니다.</td></tr>`;
+    return;
+  }
+
+  const disabledPrev = currentPage <= 1;
+  const disabledNext = currentPage >= totalPages;
+
+  pagination.innerHTML = `
+    <button type="button" class="btn page-btn" data-page-action="first" ${
+      disabledPrev ? "disabled" : ""
+    } aria-label="첫 페이지">≪</button>
+    <button type="button" class="btn page-btn" data-page-action="prev" ${
+      disabledPrev ? "disabled" : ""
+    } aria-label="이전 페이지">＜</button>
+    <div class="page-info"><strong>${currentPage}</strong> / ${totalPages}</div>
+    <button type="button" class="btn page-btn" data-page-action="next" ${
+      disabledNext ? "disabled" : ""
+    } aria-label="다음 페이지">＞</button>
+    <button type="button" class="btn page-btn" data-page-action="last" ${
+      disabledNext ? "disabled" : ""
+    } aria-label="마지막 페이지">≫</button>
+  `;
+}
+
+function onPaginationClick(event) {
+  const button = event.target.closest("[data-page-action]");
+  if (!button || button.disabled) return;
+
+  const action = button.dataset.pageAction;
+  const totalPages = lastMeta.totalPages ?? 0;
+
+  let nextPage = currentPage;
+  if (action === "first") {
+    nextPage = 1;
+  } else if (action === "prev") {
+    nextPage = Math.max(1, currentPage - 1);
+  } else if (action === "next") {
+    nextPage = totalPages === 0 ? currentPage + 1 : Math.min(totalPages, currentPage + 1);
+  } else if (action === "last") {
+    nextPage = totalPages === 0 ? currentPage : totalPages;
+  }
+
+  if (nextPage < 1) nextPage = 1;
+  if (totalPages > 0 && nextPage > totalPages) nextPage = totalPages;
+  if (nextPage !== currentPage) {
+    fetchAndRender({ page: nextPage });
+  }
+}
+
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function formatNumber(value, formatter) {
+  if (value === undefined || value === null || value === "") return "-";
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "-";
+  return (formatter ?? new Intl.NumberFormat("ko-KR")).format(num);
+}
+
+function td(content, { align, empty = false } = {}) {
+  const classes = [];
+  if (align) classes.push(`text-${align}`);
+  const classAttr = classes.length ? ` class="${classes.join(" ")}"` : "";
+  const emptyAttr = empty ? ' data-empty="true"' : "";
+  return `<td${classAttr}${emptyAttr}>${content}</td>`;
 }
 
 function openNewDialog() {
