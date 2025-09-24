@@ -5,7 +5,7 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $("#app");
 
 const PAGE_SIZE = 20;
-const EXPORT_TABLE_COLSPAN = 21;
+const EXPORT_TABLE_COLSPAN = 22;
 let currentPage = 1;
 let currentQuery = "";
 let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
@@ -189,49 +189,51 @@ function renderExport() {
         <table class="export-table" aria-label="수출 목록">
           <colgroup>
             <col class="col-no" />
+            <col class="col-type" />
             <col class="col-date" />
-            <col class="col-receipt" />
             <col class="col-project" />
             <col class="col-project-code" />
             <col class="col-item" />
-            <col class="col-spec" />
-            <col class="col-client" />
-            <col class="col-maker" />
-            <col class="col-origin" />
-            <col class="col-terms" />
             <col class="col-qty" />
-            <col class="col-unit-price" />
+            <col class="col-client" />
+            <col class="col-end-user" />
             <col class="col-country" />
-            <col class="col-method" />
-            <col class="col-port" />
-            <col class="col-destination" />
-            <col class="col-insurance" />
-            <col class="col-exporter" />
+            <col class="col-dept" />
+            <col class="col-manager" />
+            <col class="col-select" />
+            <col class="col-pl" />
+            <col class="col-invoice" />
+            <col class="col-permit" />
+            <col class="col-declaration" />
+            <col class="col-usage" />
+            <col class="col-bl" />
+            <col class="col-file" />
             <col class="col-status" />
             <col class="col-note" />
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">No</th>
-              <th scope="col">요청일</th>
-              <th scope="col">접수</th>
+              <th scope="col">NO</th>
+              <th scope="col">출고유형</th>
+              <th scope="col">출고일</th>
               <th scope="col">프로젝트명</th>
               <th scope="col">프로젝트코드</th>
-              <th scope="col">품명</th>
-              <th scope="col">규격</th>
-              <th scope="col">거래처</th>
-              <th scope="col">제작사</th>
-              <th scope="col">원산지</th>
-              <th scope="col">인도조건</th>
+              <th scope="col">품목명</th>
               <th scope="col">수량</th>
-              <th scope="col">단가</th>
+              <th scope="col">거래처</th>
+              <th scope="col">최종사용자</th>
               <th scope="col">수출국가</th>
-              <th scope="col">인도방법</th>
-              <th scope="col">선적항</th>
-              <th scope="col">도착항</th>
-              <th scope="col">보험유무</th>
-              <th scope="col">수출자</th>
-              <th scope="col">이행상태</th>
+              <th scope="col">담당부서</th>
+              <th scope="col">담당자</th>
+              <th scope="col">선택</th>
+              <th scope="col">PL</th>
+              <th scope="col">INVOICE</th>
+              <th scope="col">전략물자 수출허가서</th>
+              <th scope="col">수출신고필증</th>
+              <th scope="col">최종사용자/용도확인</th>
+              <th scope="col">B/L</th>
+              <th scope="col">파일등록 및 수정</th>
+              <th scope="col">진행상황</th>
               <th scope="col">비고</th>
             </tr>
           </thead>
@@ -340,44 +342,49 @@ function renderRows(rows = [], meta = {}) {
   }
 
   const qtyFormatter = new Intl.NumberFormat("ko-KR");
-  const priceFormatter = new Intl.NumberFormat("ko-KR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
 
   tbody.innerHTML = rows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
       const createdDate = formatDate(row.createdAt);
-      const qty = formatNumber(row.qty, qtyFormatter);
-      const unitPrice = formatNumber(row.unitPrice, priceFormatter);
+      const shipmentType = row.shipmentType ? escapeHtml(String(row.shipmentType)) : "-";
+      const projectName = row.projectName ? escapeHtml(String(row.projectName)) : "-";
+      const projectCode = row.projectCode ? escapeHtml(String(row.projectCode)) : "-";
       const item = row.item ? escapeHtml(String(row.item)) : "-";
+      const qty = formatNumber(row.qty, qtyFormatter);
+      const client = row.client ? escapeHtml(String(row.client)) : "-";
+      const endUser = row.endUser ? escapeHtml(String(row.endUser)) : "-";
       const country = row.country ? escapeHtml(String(row.country).toUpperCase()) : "-";
+      const department = row.department ? escapeHtml(String(row.department)) : "-";
+      const manager = row.manager ? escapeHtml(String(row.manager)) : "-";
       const status = row.status ? escapeHtml(String(row.status)) : "-";
+      const note = row.note ? escapeHtml(String(row.note)) : "-";
+      const selectBox = "<input type='checkbox' disabled aria-label='선택' />";
 
       return `
         <tr>
           ${td(String(seq), { align: "center" })}
+          ${td(shipmentType, { empty: shipmentType === "-" })}
           ${td(createdDate, { empty: createdDate === "-" })}
-          ${td("-", { empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
+          ${td(projectName, { align: "left", empty: projectName === "-" })}
+          ${td(projectCode, { align: "left", empty: projectCode === "-" })}
           ${td(item, { align: "left", empty: item === "-" })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
           ${td(qty, { align: "right", empty: qty === "-" })}
-          ${td(unitPrice, { align: "right", empty: unitPrice === "-" })}
+          ${td(client, { align: "left", empty: client === "-" })}
+          ${td(endUser, { align: "left", empty: endUser === "-" })}
           ${td(country, { align: "center", empty: country === "-" })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
+          ${td(department, { align: "left", empty: department === "-" })}
+          ${td(manager, { align: "left", empty: manager === "-" })}
+          ${td(selectBox, { align: "center" })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
+          ${td("-", { empty: true })}
           ${td(status, { align: "left", empty: status === "-" })}
-          ${td("-", { align: "left", empty: true })}
+          ${td(note, { align: "left", empty: note === "-" })}
         </tr>
       `;
     })

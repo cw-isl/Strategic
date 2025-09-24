@@ -80,36 +80,38 @@ h1,h2,h3{margin:0 0 .75rem}
 /* Table */
 .table-wrap{margin-top:0;overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-.table-card table{min-width:1500px}
+.table-card table{min-width:1900px}
 th,td{border:1px solid var(--line);padding:.55rem .6rem;vertical-align:middle;font-size:.85rem}
 th{background:#f5f5f5;text-align:left}
 tbody tr:hover{background:#fafcff}
 
 .export-table th{background:#e8eefc;text-align:center}
 .export-table col.col-no{width:60px}
+.export-table col.col-type{width:120px}
 .export-table col.col-date{width:120px}
-.export-table col.col-receipt{width:120px}
-.export-table col.col-project{width:180px}
+.export-table col.col-project{width:200px}
 .export-table col.col-project-code{width:150px}
 .export-table col.col-item{width:220px}
-.export-table col.col-spec{width:150px}
-.export-table col.col-client{width:160px}
-.export-table col.col-maker{width:160px}
-.export-table col.col-origin{width:140px}
-.export-table col.col-terms{width:130px}
 .export-table col.col-qty{width:90px}
-.export-table col.col-unit-price{width:110px}
+.export-table col.col-client{width:160px}
+.export-table col.col-end-user{width:160px}
 .export-table col.col-country{width:110px}
-.export-table col.col-method{width:130px}
-.export-table col.col-port{width:140px}
-.export-table col.col-destination{width:140px}
-.export-table col.col-insurance{width:120px}
-.export-table col.col-exporter{width:130px}
-.export-table col.col-status{width:130px}
-.export-table col.col-note{width:160px}
+.export-table col.col-dept{width:150px}
+.export-table col.col-manager{width:140px}
+.export-table col.col-select{width:80px}
+.export-table col.col-pl{width:130px}
+.export-table col.col-invoice{width:130px}
+.export-table col.col-permit{width:180px}
+.export-table col.col-declaration{width:150px}
+.export-table col.col-usage{width:180px}
+.export-table col.col-bl{width:130px}
+.export-table col.col-file{width:180px}
+.export-table col.col-status{width:140px}
+.export-table col.col-note{width:180px}
 .export-table th{white-space:normal;line-height:1.35}
 .export-table td{white-space:nowrap;text-align:center}
 .export-table td[data-empty="true"]{color:#a3abbb}
+.export-table td input[type="checkbox"]{width:16px;height:16px}
 .export-table td.error{color:#d23c3c;font-weight:600;text-align:center}
 .export-table .text-left{text-align:left}
 .export-table .text-right{text-align:right}
