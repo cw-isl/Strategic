@@ -170,7 +170,7 @@ function renderExport() {
       </div>
       <div class="header-actions">
         <button id="newBtn" class="btn primary" type="button">신규등록</button>
-        <button id="editBtn" class="btn" type="button">수정·변경</button>
+        <button id="editBtn" class="btn" type="button">수정요청</button>
         <button id="confirmBtn" class="btn" type="button">확인완료</button>
       </div>
     </section>
@@ -193,11 +193,11 @@ function renderExport() {
             <col class="col-receipt" />
             <col class="col-project" />
             <col class="col-project-code" />
-            <col class="col-item" />
-            <col class="col-qty" />
-            <col class="col-spec" />
-            <col class="col-client" />
-            <col class="col-maker" />
+          <col class="col-item" />
+          <col class="col-spec" />
+          <col class="col-client" />
+          <col class="col-maker" />
+          <col class="col-qty" />
             <col class="col-country" />
             <col class="col-incoterm" />
             <col class="col-port" />
@@ -218,10 +218,10 @@ function renderExport() {
               <th scope="col" rowspan="2">프로젝트명</th>
               <th scope="col" rowspan="2">프로젝트코드</th>
               <th scope="col" rowspan="2">품목명</th>
-              <th scope="col" rowspan="2">수량</th>
               <th scope="col" rowspan="2">규격</th>
               <th scope="col" rowspan="2">거래처</th>
               <th scope="col" rowspan="2">제작사</th>
+              <th scope="col" rowspan="2">수량</th>
               <th scope="col" rowspan="2">수출국가</th>
               <th scope="col" rowspan="2">인도방법</th>
               <th scope="col" rowspan="2">선적항</th>
@@ -233,7 +233,7 @@ function renderExport() {
             <tr>
               <th scope="col">%</th>
               <th scope="col">M/V/V/C</th>
-              <th scope="col">전환일자</th>
+              <th scope="col">재고전환서류제출일</th>
               <th scope="col">수리일자</th>
               <th scope="col">신고필증 수취일</th>
             </tr>
@@ -361,10 +361,10 @@ function renderRows(rows = [], meta = {}) {
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
           ${td(item, { align: "left", empty: item === "-" })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
+          ${td("-", { align: "left", empty: true })}
           ${td(qty, { align: "right", empty: qty === "-" })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
-          ${td("-", { align: "left", empty: true })}
           ${td(country, { align: "center", empty: country === "-" })}
           ${td("-", { align: "left", empty: true })}
           ${td("-", { align: "left", empty: true })}
