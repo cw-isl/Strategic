@@ -213,28 +213,31 @@ function renderExport() {
           </colgroup>
           <thead>
             <tr>
-              <th scope="col">NO</th>
-              <th scope="col">출고유형</th>
-              <th scope="col">출고일</th>
-              <th scope="col">프로젝트명</th>
-              <th scope="col">프로젝트코드</th>
-              <th scope="col">품목명</th>
-              <th scope="col">수량</th>
-              <th scope="col">거래처</th>
-              <th scope="col">최종사용자</th>
-              <th scope="col">수출국가</th>
-              <th scope="col">담당부서</th>
-              <th scope="col">담당자</th>
-              <th scope="col">선택</th>
+              <th scope="col" rowspan="2">NO</th>
+              <th scope="col" rowspan="2">출고유형</th>
+              <th scope="col" rowspan="2">출고일</th>
+              <th scope="col" rowspan="2">프로젝트명</th>
+              <th scope="col" rowspan="2">프로젝트코드</th>
+              <th scope="col" rowspan="2">품목명</th>
+              <th scope="col" rowspan="2">수량</th>
+              <th scope="col" rowspan="2">거래처</th>
+              <th scope="col" rowspan="2">최종사용자</th>
+              <th scope="col" rowspan="2">수출국가</th>
+              <th scope="col" rowspan="2">담당부서</th>
+              <th scope="col" rowspan="2">담당자</th>
+              <th scope="col" rowspan="2">선택</th>
+              <th scope="colgroup" colspan="6">수출증빙</th>
+              <th scope="col" rowspan="2">파일등록 및 수정</th>
+              <th scope="col" rowspan="2">진행상황</th>
+              <th scope="col" rowspan="2">비고</th>
+            </tr>
+            <tr>
               <th scope="col">PL</th>
               <th scope="col">INVOICE</th>
               <th scope="col">전략물자 수출허가서</th>
-              <th scope="col">수출신고필증</th>
+              <th scope="col">수출신고서</th>
               <th scope="col">최종사용자/용도확인</th>
               <th scope="col">B/L</th>
-              <th scope="col">파일등록 및 수정</th>
-              <th scope="col">진행상황</th>
-              <th scope="col">비고</th>
             </tr>
           </thead>
           <tbody id="tbody"></tbody>
@@ -482,6 +485,18 @@ function openNewDialog() {
   const form = $("#newExportForm");
   form.reset();
   dialog.showModal();
+
+  const cancelButton = form.querySelector("[data-dialog-cancel]");
+  if (cancelButton) {
+    cancelButton.addEventListener(
+      "click",
+      () => {
+        form.reset();
+        dialog.close();
+      },
+      { once: true }
+    );
+  }
 
   form.onsubmit = async (e) => {
     e.preventDefault();
