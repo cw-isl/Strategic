@@ -78,44 +78,59 @@ h1,h2,h3{margin:0 0 .75rem}
 .header-actions{flex-wrap:wrap;justify-content:flex-end}
 
 /* Table */
-.table-wrap{margin-top:0;overflow-x:auto}
-table{width:100%;border-collapse:collapse}
-.table-card table{min-width:1900px}
-th,td{border:1px solid var(--line);padding:.55rem .6rem;vertical-align:middle;font-size:.85rem}
+.table-card{display:flex;flex-direction:column;gap:1rem}
+.table-wrap{margin-top:0;overflow-x:visible}
+table{width:100%;border-collapse:collapse;table-layout:auto}
+.table-card table{min-width:0}
+th,td{border:1px solid var(--line);padding:.6rem .7rem;vertical-align:top;font-size:.85rem;line-height:1.45}
 th{background:#f5f5f5;text-align:left}
 tbody tr:hover{background:#fafcff}
 
 .export-table th{background:#e8eefc;text-align:center}
-.export-table col.col-no{width:60px}
-.export-table col.col-type{width:120px}
-.export-table col.col-date{width:120px}
-.export-table col.col-project{width:200px}
-.export-table col.col-project-code{width:150px}
-.export-table col.col-item{width:220px}
-.export-table col.col-qty{width:90px}
-.export-table col.col-client{width:160px}
-.export-table col.col-end-user{width:160px}
-.export-table col.col-country{width:110px}
-.export-table col.col-dept{width:150px}
-.export-table col.col-manager{width:140px}
-.export-table col.col-select{width:80px}
-.export-table col.col-pl{width:130px}
-.export-table col.col-invoice{width:130px}
-.export-table col.col-permit{width:180px}
-.export-table col.col-declaration{width:150px}
-.export-table col.col-usage{width:180px}
-.export-table col.col-bl{width:130px}
-.export-table col.col-file{width:180px}
-.export-table col.col-status{width:140px}
-.export-table col.col-note{width:180px}
-.export-table th{white-space:normal;line-height:1.35}
-.export-table td{white-space:nowrap;text-align:center}
-.export-table td[data-empty="true"]{color:#a3abbb}
+.export-table col{width:auto!important}
+.export-table th{
+  white-space:normal;
+  line-height:1.4;
+  text-align:center;
+  font-size:.82rem;
+  padding:.65rem .5rem;
+}
+.export-table td{
+  white-space:normal;
+  text-align:left;
+  word-break:keep-all;
+  overflow-wrap:break-word;
+  font-size:.82rem;
+  padding:.6rem .5rem;
+}
+.export-table td[data-empty="true"]{color:#a3abbb;text-align:center;font-style:italic}
 .export-table td input[type="checkbox"]{width:16px;height:16px}
 .export-table td.error{color:#d23c3c;font-weight:600;text-align:center}
 .export-table .text-left{text-align:left}
 .export-table .text-right{text-align:right}
 .export-table .text-center{text-align:center}
+
+.export-table tbody tr td:first-child{font-weight:600;color:#0f1b33}
+.export-table tbody tr:nth-child(odd){background:#fbfdff}
+.export-table tbody tr:hover{background:#f1f5ff}
+
+.export-table td[data-empty="true"]::after{content:""}
+
+@media (max-width:1200px){
+  .export-table th,.export-table td{font-size:.78rem;padding:.55rem .45rem}
+}
+
+@media (max-width:960px){
+  .page-header{gap:1.25rem}
+  .export-table th{font-size:.75rem}
+  .export-table td{font-size:.75rem}
+}
+
+@media (max-width:768px){
+  .table-card{padding:1rem}
+  .table-wrap{overflow-x:visible}
+  .export-table th,.export-table td{font-size:.72rem}
+}
 
 .table-footer{margin-top:1rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap}
 .result-count{margin:0;font-weight:600;color:#1f2a44}
