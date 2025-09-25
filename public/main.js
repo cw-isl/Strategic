@@ -2298,6 +2298,14 @@ function openNewDialog() {
     const applyVisibility = (isActive) => {
       packingStep.dataset.packingVisible = isActive ? 'true' : 'false';
       if (isActive) {
+        packingStep.removeAttribute('aria-hidden');
+      } else {
+        packingStep.setAttribute('aria-hidden', 'true');
+      }
+      if (typeof packingStep.toggleAttribute === 'function') {
+        packingStep.toggleAttribute('inert', !isActive);
+      }
+      if (isActive) {
         syncFormVisibility();
       } else {
         if (panel instanceof HTMLElement) {
