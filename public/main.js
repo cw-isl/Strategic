@@ -13,6 +13,7 @@ let lastServerMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 let lastFetchedItems = [];
 const draftEntries = [];
 let draftSeq = -1;
+let selectionHandlersInitialized = false;
 
 const menuContainer = $("[data-menu]");
 const menuButton = menuContainer?.querySelector("[data-menu-button]");
@@ -173,6 +174,7 @@ function renderExport() {
         <p class="page-description">등록된 수출 건을 검색하고 신규 데이터를 추가하세요.</p>
       </div>
       <div class="header-actions">
+        <button id="continueBtn" class="btn" type="button" hidden>이어서 등록하기</button>
         <button id="newBtn" class="btn primary" type="button">신규등록</button>
         <button id="reportBtn" class="btn" type="button">수출신고</button>
         <button id="pickupBtn" class="btn" type="button">픽업요청</button>
@@ -266,6 +268,16 @@ function renderExport() {
     }
   });
   $("#newBtn").addEventListener("click", openNewDialog);
+  const continueButton = $("#continueBtn");
+  if (continueButton) {
+    continueButton.hidden = true;
+    continueButton.addEventListener("click", () => {
+      const selectedIds = getSelectedDraftRowIds();
+      if (!selectedIds.length) return;
+      // 추후 실제 데이터 연동 시 선택한 임시저장 건을 불러오도록 연결
+      openNewDialog();
+    });
+  }
   $("#pagination").addEventListener("click", onPaginationClick);
 
   fetchAndRender({ page: 1 });
@@ -314,7 +326,7 @@ async function fetchAndRender({ page, query } = {}) {
     };
     lastFetchedItems = data.items ?? [];
 
-    const combinedRows = getCombinedRows(lastFetchedItems, { page: currentPage });
+    const combinedRows = getCombinedRows(lastFetchedItems);
     renderRows(combinedRows, { page: currentPage });
     updateMeta();
     renderPagination();
@@ -348,6 +360,7 @@ function renderRows(rows = [], meta = {}) {
 
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="${EXPORT_TABLE_COLSPAN}" data-empty="true">데이터가 없습니다.</td></tr>`;
+    updateContinueButtonVisibility();
     return;
   }
 
@@ -372,7 +385,8 @@ function renderRows(rows = [], meta = {}) {
       const country = row.country ? escapeHtml(String(row.country).toUpperCase()) : "-";
       const department = row.department ? escapeHtml(String(row.department)) : "-";
       const manager = row.manager ? escapeHtml(String(row.manager)) : "-";
-      const status = row.status ? escapeHtml(String(row.status)) : "-";
+      const statusRaw = row.status ? String(row.status) : "";
+      const status = statusRaw ? escapeHtml(statusRaw) : "-";
       const note = row.note ? escapeHtml(String(row.note)) : "-";
       const plStatus = docValue(row.plStatus);
       const invoiceStatus = docValue(row.invoiceStatus);
@@ -381,8 +395,11 @@ function renderRows(rows = [], meta = {}) {
       const usageStatus = docValue(row.usageStatus);
       const blStatus = docValue(row.blStatus);
       const fileNote = docValue(row.fileNote);
-      const selectBox = "<input type='checkbox' disabled aria-label='선택' />";
-      const rowAttrs = row.isDraft ? " data-draft=\"true\"" : "";
+      const statusNormalized = statusRaw.replace(/\s+/g, "");
+      const isDraftStatus = Boolean(row.isDraft) || statusNormalized.includes("임시저장");
+      const rowIdentifier = row.id ?? row._id ?? row.seq ?? row.projectCode ?? row.contractNumber ?? row.client ?? `row-${startIndex + idx}`;
+      const selectBox = `<input type="checkbox" data-select data-entry-id="${escapeHtml(String(rowIdentifier))}" data-draft="${isDraftStatus ? "true" : "false"}" aria-label="선택" />`;
+      const rowAttrs = isDraftStatus ? " data-draft=\"true\"" : row.isDraft ? " data-draft=\"true\"" : "";
 
       return `
         <tr${rowAttrs}>
@@ -412,38 +429,52 @@ function renderRows(rows = [], meta = {}) {
       `;
     })
     .join("");
+
+  ensureSelectionHandlers();
+  updateContinueButtonVisibility();
 }
 
-function getCombinedRows(serverRows = [], { page } = {}) {
-  const targetPage = page ?? currentPage;
-  if (targetPage === 1) {
-    return [...draftEntries, ...serverRows];
-  }
+function ensureSelectionHandlers() {
+  if (selectionHandlersInitialized) return;
+  const tbody = $("#tbody");
+  if (!tbody) return;
+  tbody.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.type !== "checkbox" || !target.hasAttribute("data-select")) return;
+    updateContinueButtonVisibility();
+  });
+  selectionHandlersInitialized = true;
+}
+
+function getSelectedDraftRowIds() {
+  const tbody = $("#tbody");
+  if (!tbody) return [];
+  return $$('input[type="checkbox"][data-select][data-draft="true"]:checked', tbody)
+    .map((input) => input.dataset.entryId)
+    .filter(Boolean);
+}
+
+function updateContinueButtonVisibility() {
+  const continueButton = $("#continueBtn");
+  if (!continueButton) return;
+  const hasDraftSelection = getSelectedDraftRowIds().length > 0;
+  continueButton.hidden = !hasDraftSelection;
+}
+
+function getCombinedRows(serverRows = []) {
   return serverRows;
 }
 
 function updateMeta() {
   const serverTotal = lastServerMeta.totalCount ?? 0;
-  const totalCount = serverTotal + draftEntries.length;
   const serverPages = lastServerMeta.totalPages ?? 0;
-  let totalPages = serverPages;
-  if (totalCount === 0) {
-    totalPages = 0;
-  } else if (totalPages === 0) {
-    totalPages = 1;
-  }
+  const totalPages = serverTotal === 0 ? 0 : serverPages === 0 ? 1 : serverPages;
   lastMeta = {
     totalPages,
-    totalCount,
+    totalCount: serverTotal,
     pageSize: lastServerMeta.pageSize ?? PAGE_SIZE,
   };
-}
-
-function refreshAfterDraftChange() {
-  updateMeta();
-  const rows = getCombinedRows(lastFetchedItems, { page: currentPage });
-  renderRows(rows, { page: currentPage });
-  renderPagination();
 }
 
 function collectFormValues(form) {
@@ -461,51 +492,77 @@ function collectFormValues(form) {
 
 function mapFormDataToPayload(data = {}) {
   const trim = (val) => (typeof val === "string" ? val.trim() : "");
-  const qtyValue = Number(data.qty ?? 0);
-  const priceValue = Number(data.unitPrice ?? 0);
+  const exportType = trim(data.exportType);
+  const exportTypeDetail = trim(data.exportTypeDetail);
+  const projectName = trim(data.projectName);
+  const projectCode = trim(data.projectCode);
+  const strategicFlag = trim(data.strategicFlag);
+  const managerName = trim(data.managerName);
+  const managerDepartment = trim(data.managerDepartment);
+  const managerPhone = trim(data.managerPhone);
+  const managerEmail = trim(data.managerEmail);
+  const importCompanyName = trim(data.importCompanyName);
+  const importAddress = trim(data.importAddress);
+  const importCountry = trim(data.importCountry);
+  const importCountryCode = trim(data.importCountryCode);
+  const importPhone = trim(data.importPhone);
+  const importContactName = trim(data.importContactName);
+  const importContactPhone = trim(data.importContactPhone);
+  const importEmail = trim(data.importEmail);
+  const importEtc = trim(data.importEtc);
+
+  const resolvedPurpose = exportType === "기타" && exportTypeDetail ? exportTypeDetail : exportType;
+
   const payload = {
-    item: trim(data.item),
-    qty: Number.isFinite(qtyValue) ? Math.max(0, Math.floor(qtyValue)) : 0,
-    unitPrice: Number.isFinite(priceValue) ? Math.max(0, priceValue) : 0,
-    country: trim(data.country),
-    status: trim(data.status) || "대기",
-    shipmentType: trim(data.shipmentType),
-    shipmentDate: data.shipmentDate || "",
-    shipmentPurpose: trim(data.shipmentPurpose),
-    projectName: trim(data.projectName),
-    projectCode: trim(data.projectCode),
-    contractNumber: trim(data.contractNumber),
-    itemSpec: trim(data.itemSpec),
-    unit: trim(data.unit),
-    client: trim(data.client),
-    clientCountry: trim(data.clientCountry),
-    clientManager: trim(data.clientManager),
-    endUser: trim(data.endUser),
-    endUserCountry: trim(data.endUserCountry),
-    endUse: trim(data.endUse),
-    transportMode: trim(data.transportMode),
-    departureDate: data.departureDate || "",
-    department: trim(data.department),
-    manager: trim(data.manager),
-    managerEmail: trim(data.managerEmail),
-    strategicFlag: trim(data.strategicFlag),
-    strategicCategory: trim(data.strategicCategory),
-    strategicBasis: trim(data.strategicBasis),
-    permitType: trim(data.permitType),
-    permitNumber: trim(data.permitNumber),
-    declarationNumber: trim(data.declarationNumber),
-    plStatus: trim(data.plStatus || "미등록"),
-    invoiceStatus: trim(data.invoiceStatus || "미등록"),
-    permitStatus: trim(data.permitStatus || "미등록"),
-    declarationStatus: trim(data.declarationStatus || "미등록"),
-    usageStatus: trim(data.usageStatus || "미등록"),
-    blStatus: trim(data.blStatus || "미등록"),
-    fileNote: trim(data.fileNote),
-    note: trim(data.note),
-    companyName: trim(data.companyName),
-    businessNumber: trim(data.businessNumber),
-    contactName: trim(data.contactName),
-    contactPhone: trim(data.contactPhone),
+    exportType,
+    exportTypeDetail: exportType === "기타" ? exportTypeDetail : "",
+    projectName,
+    projectCode,
+    strategicFlag,
+    managerName,
+    managerDepartment,
+    managerPhone,
+    managerEmail,
+    importCompanyName,
+    importAddress,
+    importCountry,
+    importCountryCode,
+    importPhone,
+    importContactName,
+    importContactPhone,
+    importEmail,
+    importEtc,
+    requester: {
+      name: managerName,
+      department: managerDepartment,
+      phone: managerPhone,
+      email: managerEmail,
+    },
+    importer: {
+      companyName: importCompanyName,
+      address: importAddress,
+      country: importCountry,
+      countryCode: importCountryCode,
+      phone: importPhone,
+      contactName: importContactName,
+      contactPhone: importContactPhone,
+      email: importEmail,
+      etc: importEtc,
+    },
+    shipmentType: exportType,
+    shipmentPurpose: resolvedPurpose,
+    projectNameDisplay: projectName,
+    projectCodeDisplay: projectCode,
+    department: managerDepartment,
+    manager: managerName,
+    managerEmail,
+    contactPhone: managerPhone,
+    client: importCompanyName,
+    clientCountry: importCountry,
+    clientManager: importContactName,
+    note: importEtc,
+    country: importCountry,
+    status: "대기",
   };
   return payload;
 }
@@ -515,8 +572,6 @@ function mapFormDataToRow(data = {}, { draft = false } = {}) {
   const row = {
     ...payload,
     createdAt: Date.now(),
-    qty: payload.qty,
-    unitPrice: payload.unitPrice,
     status: draft ? "임시저장" : payload.status,
     note: payload.note || (draft ? "임시 저장" : ""),
     isDraft: draft,
@@ -529,7 +584,6 @@ function addDraftEntry(data) {
   const row = mapFormDataToRow(data, { draft: true });
   row.id = `D${Date.now()}_${Math.abs(draftSeq--)}`;
   draftEntries.unshift(row);
-  refreshAfterDraftChange();
 }
 
 function formHasInput(form) {
@@ -649,10 +703,113 @@ function openNewDialog() {
 
   const stepIndicator = $("#newExportStep");
   const stepTitle = $("#newExportSection");
+  const prevButton = form.querySelector("[data-step-prev]");
   const nextButton = form.querySelector("[data-step-next]");
   const saveButton = form.querySelector("[data-step-save]");
   const completeButton = form.querySelector("[data-step-complete]");
   const cancelButton = form.querySelector("[data-dialog-cancel]");
+
+  const exportTypeSelect = form.querySelector("select[name=exportType]");
+  const exportTypeDetailLabel = form.querySelector("[data-export-type-detail]");
+  const exportTypeDetailInput = form.querySelector("input[name=exportTypeDetail]");
+  const strategicGroup = form.querySelector("[data-required-group]");
+  const strategicValueInput = form.querySelector("[data-strategic-value]");
+  const strategicOptions = strategicGroup
+    ? $$('input[type="checkbox"][data-strategic-option]', strategicGroup)
+    : [];
+
+  const isStepComplete = (index) => {
+    const stepEl = steps[index];
+    if (!stepEl) return true;
+
+    const requiredInputs = $$('[required]', stepEl);
+    for (const input of requiredInputs) {
+      if (input.disabled) continue;
+      if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+        if (input.type === "checkbox" || input.type === "radio") {
+          if (!input.checked) return false;
+        } else if (!input.checkValidity() || (input.value ?? "").trim() === "") {
+          return false;
+        }
+      }
+    }
+
+    const requiredGroups = $$('[data-required-group]', stepEl);
+    for (const group of requiredGroups) {
+      const options = $$('input[type="checkbox"]', group).filter((opt) => !opt.disabled);
+      if (!options.some((opt) => opt.checked)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const updateStepActionState = () => {
+    const complete = isStepComplete(currentStep);
+    if (prevButton) {
+      prevButton.disabled = currentStep === 0;
+    }
+    if (nextButton) {
+      nextButton.disabled = currentStep >= totalSteps - 1 || !complete;
+    }
+    if (completeButton) {
+      completeButton.disabled = currentStep !== totalSteps - 1 || !complete;
+    }
+  };
+
+  const toggleExportTypeDetail = () => {
+    const needDetail = exportTypeSelect?.value === "기타";
+    if (exportTypeDetailLabel) {
+      if (needDetail) {
+        exportTypeDetailLabel.removeAttribute("hidden");
+      } else {
+        exportTypeDetailLabel.setAttribute("hidden", "true");
+      }
+    }
+    if (exportTypeDetailInput) {
+      exportTypeDetailInput.disabled = !needDetail;
+      exportTypeDetailInput.required = Boolean(needDetail);
+      if (!needDetail) {
+        exportTypeDetailInput.value = "";
+      }
+    }
+    updateStepActionState();
+  };
+
+  const handleStrategicOptionChange = (input) => {
+    if (!(input instanceof HTMLInputElement)) return;
+    if (input.checked) {
+      strategicOptions.forEach((opt) => {
+        if (opt !== input) opt.checked = false;
+      });
+      if (strategicValueInput) {
+        strategicValueInput.value = input.value;
+      }
+    } else {
+      const selected = strategicOptions.find((opt) => opt.checked);
+      if (strategicValueInput) {
+        strategicValueInput.value = selected ? selected.value : "";
+      }
+    }
+    updateStepActionState();
+  };
+
+  const setupStrategicGroup = () => {
+    if (!strategicGroup) return;
+    if (strategicValueInput) strategicValueInput.value = "";
+    strategicOptions.forEach((option) => {
+      option.checked = false;
+      if (!option.dataset.boundStrategic) {
+        option.addEventListener("change", (event) => {
+          if (event.target instanceof HTMLInputElement) {
+            handleStrategicOptionChange(event.target);
+          }
+        });
+        option.dataset.boundStrategic = "true";
+      }
+    });
+  };
 
   const showStep = (index) => {
     currentStep = Math.max(0, Math.min(index, totalSteps - 1));
@@ -670,19 +827,24 @@ function openNewDialog() {
       const active = steps[currentStep];
       stepTitle.textContent = active?.dataset.stepTitle ?? "";
     }
-    if (nextButton) {
-      nextButton.disabled = currentStep >= totalSteps - 1;
-    }
-    if (completeButton) {
-      completeButton.disabled = currentStep !== totalSteps - 1;
-    }
+    updateStepActionState();
   };
 
   const validateStep = (index) => {
     const stepEl = steps[index];
     if (!stepEl) return true;
+    const requiredGroups = $$('[data-required-group]', stepEl);
+    for (const group of requiredGroups) {
+      const options = $$('input[type="checkbox"]', group).filter((opt) => !opt.disabled);
+      if (!options.some((opt) => opt.checked)) {
+        alert("전략물자 여부를 선택해주세요.");
+        options[0]?.focus();
+        return false;
+      }
+    }
     const inputs = $$("input, select, textarea", stepEl);
     for (const input of inputs) {
+      if (input.disabled) continue;
       if (typeof input.reportValidity === "function" && !input.reportValidity()) {
         input.focus();
         return false;
@@ -695,6 +857,12 @@ function openNewDialog() {
     if (!validateStep(currentStep)) return;
     if (currentStep < totalSteps - 1) {
       showStep(currentStep + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentStep > 0) {
+      showStep(currentStep - 1);
     }
   };
 
@@ -719,12 +887,29 @@ function openNewDialog() {
   if (nextButton) {
     nextButton.onclick = handleNext;
   }
+  if (prevButton) {
+    prevButton.onclick = handlePrev;
+  }
   if (saveButton) {
     saveButton.onclick = handleSaveDraft;
   }
   if (cancelButton) {
     cancelButton.onclick = handleCancel;
   }
+
+  if (!form.dataset.boundStepState) {
+    form.addEventListener("input", () => updateStepActionState());
+    form.addEventListener("change", () => updateStepActionState());
+    form.dataset.boundStepState = "true";
+  }
+
+  if (exportTypeSelect && !exportTypeSelect.dataset.boundDetail) {
+    exportTypeSelect.addEventListener("change", toggleExportTypeDetail);
+    exportTypeSelect.dataset.boundDetail = "true";
+  }
+
+  setupStrategicGroup();
+  toggleExportTypeDetail();
 
   form.onsubmit = async (e) => {
     e.preventDefault();
@@ -749,9 +934,6 @@ function openNewDialog() {
       await res.json();
       dialog.close();
       form.reset();
-      if (location.pathname === "/export") {
-        fetchAndRender({ page: 1 });
-      }
     } catch (err) {
       alert(err.message || "등록 중 오류");
     }
