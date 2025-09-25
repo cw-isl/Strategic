@@ -146,8 +146,20 @@ tbody tr:hover{background:#fafcff}
 dialog{border:none;padding:0}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.grid [data-span="full"]{grid-column:1 / -1}
 label{display:grid;gap:.3rem;font-weight:600}
 input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6px;font:inherit;resize:vertical}
+.checkbox-row{display:flex;align-items:center}
+.checkbox-row .checkbox-inline{display:inline-flex;align-items:center;gap:.45rem;font-weight:600}
+.checkbox-row .checkbox-inline input{width:18px;height:18px}
+.item-table{display:flex;flex-direction:column;gap:.75rem}
+.item-table .table-controls{display:flex;justify-content:flex-end;gap:.5rem}
+.item-table table th{text-align:center}
+.item-table table td{vertical-align:middle}
+.item-table tbody tr td:first-child{text-align:center}
+.item-table tbody input{width:100%}
+.item-table tbody input[type="number"]{text-align:right}
+.item-table tbody input[readonly]{background:#f7f8fb}
 .step-container{display:flex;flex-direction:column;gap:1.25rem;margin-top:1rem}
 .step{display:block}
 .step[hidden]{display:none}

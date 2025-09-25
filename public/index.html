@@ -38,7 +38,7 @@
     <form id="newExportForm" method="dialog" class="card">
       <header class="dialog-header">
         <h3 id="newExportTitle">수출 신규등록</h3>
-        <p id="newExportStep" class="step-indicator" aria-live="polite">1 / 4</p>
+        <p id="newExportStep" class="step-indicator" aria-live="polite">1 / 12</p>
         <p id="newExportSection" class="step-title">수출목적</p>
       </header>
       <div class="step-container">
@@ -113,6 +113,114 @@
             <label>연락처<input name="importContactPhone" required placeholder="예: +82-10-0000-0000" /></label>
             <label>이메일<input name="importEmail" type="email" required placeholder="예: contact@example.com" /></label>
             <label>기타<textarea name="importEtc" rows="3" placeholder="추가 정보를 입력해주세요"></textarea></label>
+          </div>
+        </section>
+        <section class="step" data-step="4" data-step-title="Notify Party (착하통지처)">
+          <div class="grid">
+            <div data-span="full" class="checkbox-row">
+              <label class="checkbox-inline"><input type="checkbox" name="notifySameAsImporter" data-notify-copy /> 수입자와 동일</label>
+            </div>
+            <label>회사명<input name="notifyCompanyName" required placeholder="예: ABC Corp." /></label>
+            <label>주소<input name="notifyAddress" required placeholder="예: 서울특별시 ..." /></label>
+            <label>국가
+              <select name="notifyCountry" required data-country-select-simple data-code-target="notifyCountryCode">
+                <option value="">선택</option>
+              </select>
+            </label>
+            <label>국가번호<input name="notifyCountryCode" required readonly placeholder="예: +82" /></label>
+            <label>전화번호<input name="notifyPhone" required placeholder="예: 02-000-0000" /></label>
+            <label>이름<input name="notifyContactName" required placeholder="예: John Doe" /></label>
+            <label>연락처<input name="notifyContactPhone" required placeholder="예: +82-10-0000-0000" /></label>
+            <label>이메일<input name="notifyEmail" type="email" required placeholder="예: contact@example.com" /></label>
+            <label>기타<textarea name="notifyEtc" rows="3" placeholder="추가 정보를 입력해주세요"></textarea></label>
+          </div>
+        </section>
+        <section class="step" data-step="5" data-step-title="출발국가 및 최종 배송국가">
+          <div class="grid">
+            <label>출발국가
+              <select name="originCountry" required data-country-select-simple>
+                <option value="">선택</option>
+              </select>
+            </label>
+            <label>최종 배송국가
+              <select name="destinationCountry" required data-country-select-simple>
+                <option value="">선택</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <section class="step" data-step="6" data-step-title="발송일자">
+          <div class="grid">
+            <label data-span="full">발송일자<input name="dispatchDate" type="date" required aria-label="발송일자" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="7" data-step-title="운송수단">
+          <div class="grid">
+            <label>운송수단
+              <select name="transportMode" required>
+                <option value="">선택</option>
+                <option value="항공">항공</option>
+                <option value="해상">해상</option>
+                <option value="육로">육로</option>
+                <option value="기타">기타</option>
+              </select>
+            </label>
+            <label data-transport-detail hidden>기타 사유<input name="transportOther" placeholder="운송수단을 입력해주세요" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="8" data-step-title="선적예정일">
+          <div class="grid">
+            <label data-span="full">선적예정일<input name="loadingDate" type="date" required aria-label="선적예정일" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="9" data-step-title="배송조건 (Incoterms)">
+          <div class="grid">
+            <label>배송조건 (Incoterms)
+              <select name="incoterms" required>
+                <option value="">선택</option>
+                <option value="EXW">EXW</option>
+                <option value="FCA">FCA</option>
+                <option value="FAS">FAS</option>
+                <option value="FOB">FOB</option>
+                <option value="CFR">CFR</option>
+                <option value="CIF">CIF</option>
+                <option value="CPT">CPT</option>
+                <option value="CIP">CIP</option>
+                <option value="DAP">DAP</option>
+                <option value="DPU">DPU</option>
+                <option value="DDP">DDP</option>
+                <option value="기타">기타</option>
+              </select>
+            </label>
+            <label data-incoterms-detail hidden>기타 조건<input name="incotermsOther" placeholder="배송조건을 입력해주세요" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="10" data-step-title="결제조건">
+          <div class="grid">
+            <label data-span="full">결제조건<input name="paymentTerms" required placeholder="예: 선지급 50%, 납품 후 50%" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="11" data-step-title="품목정보" data-items-step>
+          <div class="item-table">
+            <div class="table-controls">
+              <button type="button" class="btn" data-item-add>행 추가</button>
+              <button type="button" class="btn" data-item-remove>행 삭제</button>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">선택</th>
+                  <th scope="col">NO</th>
+                  <th scope="col">품명</th>
+                  <th scope="col">품목구분</th>
+                  <th scope="col">수량</th>
+                  <th scope="col">단가</th>
+                  <th scope="col">총액</th>
+                  <th scope="col">생산국</th>
+                </tr>
+              </thead>
+              <tbody data-item-rows></tbody>
+            </table>
           </div>
         </section>
       </div>
