@@ -15,6 +15,143 @@ const draftEntries = [];
 let draftSeq = -1;
 let selectionHandlersInitialized = false;
 
+const toFlagEmoji = (countryCode = "") => {
+  if (typeof countryCode !== "string" || countryCode.length !== 2) return "🏳";
+  const upper = countryCode.toUpperCase();
+  const codePoints = [...upper].map((char) => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+};
+
+const COUNTRY_DATA = [
+  { ko: "대한민국", en: "South Korea", iso2: "KR", dialCode: "+82" },
+  { ko: "미국", en: "United States", iso2: "US", dialCode: "+1" },
+  { ko: "일본", en: "Japan", iso2: "JP", dialCode: "+81" },
+  { ko: "중국", en: "China", iso2: "CN", dialCode: "+86" },
+  { ko: "캐나다", en: "Canada", iso2: "CA", dialCode: "+1" },
+  { ko: "멕시코", en: "Mexico", iso2: "MX", dialCode: "+52" },
+  { ko: "브라질", en: "Brazil", iso2: "BR", dialCode: "+55" },
+  { ko: "아르헨티나", en: "Argentina", iso2: "AR", dialCode: "+54" },
+  { ko: "칠레", en: "Chile", iso2: "CL", dialCode: "+56" },
+  { ko: "페루", en: "Peru", iso2: "PE", dialCode: "+51" },
+  { ko: "콜롬비아", en: "Colombia", iso2: "CO", dialCode: "+57" },
+  { ko: "영국", en: "United Kingdom", iso2: "GB", dialCode: "+44" },
+  { ko: "프랑스", en: "France", iso2: "FR", dialCode: "+33" },
+  { ko: "이탈리아", en: "Italy", iso2: "IT", dialCode: "+39" },
+  { ko: "스페인", en: "Spain", iso2: "ES", dialCode: "+34" },
+  { ko: "독일", en: "Germany", iso2: "DE", dialCode: "+49" },
+  { ko: "네덜란드", en: "Netherlands", iso2: "NL", dialCode: "+31" },
+  { ko: "벨기에", en: "Belgium", iso2: "BE", dialCode: "+32" },
+  { ko: "룩셈부르크", en: "Luxembourg", iso2: "LU", dialCode: "+352" },
+  { ko: "스위스", en: "Switzerland", iso2: "CH", dialCode: "+41" },
+  { ko: "오스트리아", en: "Austria", iso2: "AT", dialCode: "+43" },
+  { ko: "덴마크", en: "Denmark", iso2: "DK", dialCode: "+45" },
+  { ko: "스웨덴", en: "Sweden", iso2: "SE", dialCode: "+46" },
+  { ko: "노르웨이", en: "Norway", iso2: "NO", dialCode: "+47" },
+  { ko: "핀란드", en: "Finland", iso2: "FI", dialCode: "+358" },
+  { ko: "포르투갈", en: "Portugal", iso2: "PT", dialCode: "+351" },
+  { ko: "그리스", en: "Greece", iso2: "GR", dialCode: "+30" },
+  { ko: "체코", en: "Czechia", iso2: "CZ", dialCode: "+420" },
+  { ko: "헝가리", en: "Hungary", iso2: "HU", dialCode: "+36" },
+  { ko: "폴란드", en: "Poland", iso2: "PL", dialCode: "+48" },
+  { ko: "루마니아", en: "Romania", iso2: "RO", dialCode: "+40" },
+  { ko: "불가리아", en: "Bulgaria", iso2: "BG", dialCode: "+359" },
+  { ko: "슬로바키아", en: "Slovakia", iso2: "SK", dialCode: "+421" },
+  { ko: "슬로베니아", en: "Slovenia", iso2: "SI", dialCode: "+386" },
+  { ko: "크로아티아", en: "Croatia", iso2: "HR", dialCode: "+385" },
+  { ko: "라트비아", en: "Latvia", iso2: "LV", dialCode: "+371" },
+  { ko: "리투아니아", en: "Lithuania", iso2: "LT", dialCode: "+370" },
+  { ko: "에스토니아", en: "Estonia", iso2: "EE", dialCode: "+372" },
+  { ko: "아일랜드", en: "Ireland", iso2: "IE", dialCode: "+353" },
+  { ko: "아이슬란드", en: "Iceland", iso2: "IS", dialCode: "+354" },
+  { ko: "우크라이나", en: "Ukraine", iso2: "UA", dialCode: "+380" },
+  { ko: "러시아", en: "Russia", iso2: "RU", dialCode: "+7" },
+  { ko: "터키", en: "Turkey", iso2: "TR", dialCode: "+90" },
+  { ko: "이스라엘", en: "Israel", iso2: "IL", dialCode: "+972" },
+  { ko: "아랍에미리트", en: "United Arab Emirates", iso2: "AE", dialCode: "+971" },
+  { ko: "사우디아라비아", en: "Saudi Arabia", iso2: "SA", dialCode: "+966" },
+  { ko: "카타르", en: "Qatar", iso2: "QA", dialCode: "+974" },
+  { ko: "쿠웨이트", en: "Kuwait", iso2: "KW", dialCode: "+965" },
+  { ko: "바레인", en: "Bahrain", iso2: "BH", dialCode: "+973" },
+  { ko: "오만", en: "Oman", iso2: "OM", dialCode: "+968" },
+  { ko: "요르단", en: "Jordan", iso2: "JO", dialCode: "+962" },
+  { ko: "이집트", en: "Egypt", iso2: "EG", dialCode: "+20" },
+  { ko: "이란", en: "Iran", iso2: "IR", dialCode: "+98" },
+  { ko: "이라크", en: "Iraq", iso2: "IQ", dialCode: "+964" },
+  { ko: "파키스탄", en: "Pakistan", iso2: "PK", dialCode: "+92" },
+  { ko: "방글라데시", en: "Bangladesh", iso2: "BD", dialCode: "+880" },
+  { ko: "인도", en: "India", iso2: "IN", dialCode: "+91" },
+  { ko: "스리랑카", en: "Sri Lanka", iso2: "LK", dialCode: "+94" },
+  { ko: "네팔", en: "Nepal", iso2: "NP", dialCode: "+977" },
+  { ko: "몽골", en: "Mongolia", iso2: "MN", dialCode: "+976" },
+  { ko: "카자흐스탄", en: "Kazakhstan", iso2: "KZ", dialCode: "+7" },
+  { ko: "우즈베키스탄", en: "Uzbekistan", iso2: "UZ", dialCode: "+998" },
+  { ko: "베트남", en: "Vietnam", iso2: "VN", dialCode: "+84" },
+  { ko: "태국", en: "Thailand", iso2: "TH", dialCode: "+66" },
+  { ko: "말레이시아", en: "Malaysia", iso2: "MY", dialCode: "+60" },
+  { ko: "싱가포르", en: "Singapore", iso2: "SG", dialCode: "+65" },
+  { ko: "인도네시아", en: "Indonesia", iso2: "ID", dialCode: "+62" },
+  { ko: "필리핀", en: "Philippines", iso2: "PH", dialCode: "+63" },
+  { ko: "캄보디아", en: "Cambodia", iso2: "KH", dialCode: "+855" },
+  { ko: "라오스", en: "Laos", iso2: "LA", dialCode: "+856" },
+  { ko: "미얀마", en: "Myanmar", iso2: "MM", dialCode: "+95" },
+  { ko: "브루나이", en: "Brunei", iso2: "BN", dialCode: "+673" },
+  { ko: "홍콩", en: "Hong Kong", iso2: "HK", dialCode: "+852" },
+  { ko: "마카오", en: "Macau", iso2: "MO", dialCode: "+853" },
+  { ko: "대만", en: "Taiwan", iso2: "TW", dialCode: "+886" },
+  { ko: "호주", en: "Australia", iso2: "AU", dialCode: "+61" },
+  { ko: "뉴질랜드", en: "New Zealand", iso2: "NZ", dialCode: "+64" },
+  { ko: "사모아", en: "Samoa", iso2: "WS", dialCode: "+685" },
+  { ko: "피지", en: "Fiji", iso2: "FJ", dialCode: "+679" },
+  { ko: "파푸아뉴기니", en: "Papua New Guinea", iso2: "PG", dialCode: "+675" },
+  { ko: "남아프리카공화국", en: "South Africa", iso2: "ZA", dialCode: "+27" },
+  { ko: "나이지리아", en: "Nigeria", iso2: "NG", dialCode: "+234" },
+  { ko: "케냐", en: "Kenya", iso2: "KE", dialCode: "+254" },
+  { ko: "모로코", en: "Morocco", iso2: "MA", dialCode: "+212" },
+  { ko: "알제리", en: "Algeria", iso2: "DZ", dialCode: "+213" },
+  { ko: "튀니지", en: "Tunisia", iso2: "TN", dialCode: "+216" },
+  { ko: "에티오피아", en: "Ethiopia", iso2: "ET", dialCode: "+251" },
+  { ko: "가나", en: "Ghana", iso2: "GH", dialCode: "+233" },
+  { ko: "탄자니아", en: "Tanzania", iso2: "TZ", dialCode: "+255" },
+  { ko: "앙골라", en: "Angola", iso2: "AO", dialCode: "+244" },
+  { ko: "짐바브웨", en: "Zimbabwe", iso2: "ZW", dialCode: "+263" },
+  { ko: "우간다", en: "Uganda", iso2: "UG", dialCode: "+256" },
+  { ko: "보츠와나", en: "Botswana", iso2: "BW", dialCode: "+267" },
+  { ko: "잠비아", en: "Zambia", iso2: "ZM", dialCode: "+260" },
+  { ko: "세네갈", en: "Senegal", iso2: "SN", dialCode: "+221" },
+  { ko: "코트디부아르", en: "Ivory Coast", iso2: "CI", dialCode: "+225" },
+  { ko: "카메룬", en: "Cameroon", iso2: "CM", dialCode: "+237" },
+  { ko: "수단", en: "Sudan", iso2: "SD", dialCode: "+249" },
+  { ko: "카보베르데", en: "Cape Verde", iso2: "CV", dialCode: "+238" },
+  { ko: "마다가스카르", en: "Madagascar", iso2: "MG", dialCode: "+261" },
+  { ko: "모리셔스", en: "Mauritius", iso2: "MU", dialCode: "+230" },
+  { ko: "트리니다드토바고", en: "Trinidad and Tobago", iso2: "TT", dialCode: "+1" },
+  { ko: "쿠바", en: "Cuba", iso2: "CU", dialCode: "+53" },
+  { ko: "도미니카공화국", en: "Dominican Republic", iso2: "DO", dialCode: "+1" },
+  { ko: "자메이카", en: "Jamaica", iso2: "JM", dialCode: "+1" },
+  { ko: "파나마", en: "Panama", iso2: "PA", dialCode: "+507" },
+  { ko: "코스타리카", en: "Costa Rica", iso2: "CR", dialCode: "+506" },
+  { ko: "파라과이", en: "Paraguay", iso2: "PY", dialCode: "+595" },
+  { ko: "우루과이", en: "Uruguay", iso2: "UY", dialCode: "+598" },
+  { ko: "볼리비아", en: "Bolivia", iso2: "BO", dialCode: "+591" },
+  { ko: "베네수엘라", en: "Venezuela", iso2: "VE", dialCode: "+58" }
+];
+
+const COUNTRY_LIST = COUNTRY_DATA.map((item) => {
+  const iso2 = item.iso2.toUpperCase();
+  const dial = item.dialCode.startsWith("+") ? item.dialCode : `+${item.dialCode}`;
+  const searchValue = [item.ko, item.en, iso2, dial, dial.replace(/[+\s-]/g, ""), item.ko.replace(/\s/g, ""), item.en.replace(/\s/g, "")]
+    .join(" ")
+    .toLowerCase();
+  return {
+    name: item.ko,
+    english: item.en,
+    iso2,
+    dialCode: dial,
+    flag: toFlagEmoji(iso2),
+    searchValue,
+  };
+}).sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
+
 const menuContainer = $("[data-menu]");
 const menuButton = menuContainer?.querySelector("[data-menu-button]");
 const menuPanel = menuContainer?.querySelector(".menu-panel");
@@ -717,6 +854,7 @@ function openNewDialog() {
   const strategicOptions = strategicGroup
     ? $$('input[type="checkbox"][data-strategic-option]', strategicGroup)
     : [];
+  const countrySelectContainer = form.querySelector("[data-country-select]");
 
   const isStepComplete = (index) => {
     const stepEl = steps[index];
@@ -739,6 +877,15 @@ function openNewDialog() {
       const options = $$('input[type="checkbox"]', group).filter((opt) => !opt.disabled);
       if (!options.some((opt) => opt.checked)) {
         return false;
+      }
+    }
+
+    const hiddenRequired = $$('[data-required-hidden]', stepEl);
+    for (const hidden of hiddenRequired) {
+      if (hidden instanceof HTMLInputElement || hidden instanceof HTMLTextAreaElement) {
+        if ((hidden.value ?? "").trim() === "") {
+          return false;
+        }
       }
     }
 
@@ -811,6 +958,244 @@ function openNewDialog() {
     });
   };
 
+  const setupCountrySelector = () => {
+    if (!countrySelectContainer) return;
+    const toggle = countrySelectContainer.querySelector("[data-country-toggle]");
+    const menu = countrySelectContainer.querySelector("[data-country-menu]");
+    const optionsList = countrySelectContainer.querySelector("[data-country-options]");
+    const searchInput = countrySelectContainer.querySelector("[data-country-search]");
+    const hiddenInput = countrySelectContainer.querySelector("[data-country-value]");
+    const flagEl = countrySelectContainer.querySelector("[data-country-flag]");
+    const labelEl = countrySelectContainer.querySelector("[data-country-label]");
+    const dialEl = countrySelectContainer.querySelector("[data-country-selected-dial]");
+    const codeInput = form.querySelector("[data-country-code]");
+
+    if (!(toggle instanceof HTMLButtonElement) || !menu || !optionsList || !(hiddenInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const container = countrySelectContainer;
+    const DEFAULT_LABEL = "국가를 선택하세요";
+    const DEFAULT_FLAG = "🌐";
+
+    const renderOptions = (items) => {
+      if (!(optionsList instanceof HTMLElement)) return;
+      if (!Array.isArray(items) || items.length === 0) {
+        optionsList.innerHTML = '<li class="country-empty">검색 결과가 없습니다.</li>';
+        return;
+      }
+      optionsList.innerHTML = items
+        .map((country) => {
+          const selected = hiddenInput.value === country.name;
+          const selectedAttr = selected ? ' data-selected="true" aria-selected="true"' : ' aria-selected="false"';
+          return `
+            <li>
+              <button type="button" class="country-option" role="option"${selectedAttr} data-country-option data-country-name="${escapeHtml(
+                country.name
+              )}" data-country-dial="${escapeHtml(country.dialCode)}" data-country-iso="${escapeHtml(country.iso2)}">
+                <span class="country-flag">${escapeHtml(country.flag)}</span>
+                <span class="country-info">
+                  <span class="country-name">${escapeHtml(country.name)}</span>
+                  <span class="country-en">${escapeHtml(country.english)}</span>
+                </span>
+                <span class="country-dial">${escapeHtml(country.dialCode)}</span>
+              </button>
+            </li>
+          `;
+        })
+        .join("");
+    };
+
+    const filterOptions = (keyword = "") => {
+      const value = keyword.trim().toLowerCase();
+      const filtered = value
+        ? COUNTRY_LIST.filter((country) => country.searchValue.includes(value))
+        : COUNTRY_LIST.slice();
+      renderOptions(filtered);
+    };
+
+    const closeMenu = () => {
+      if (menu.hasAttribute("hidden")) return;
+      menu.setAttribute("hidden", "true");
+      container.classList.remove("open");
+      toggle.setAttribute("aria-expanded", "false");
+      if (searchInput instanceof HTMLInputElement) {
+        searchInput.value = "";
+      }
+      filterOptions("");
+    };
+
+    const openMenu = () => {
+      if (!menu.hasAttribute("hidden")) return;
+      menu.removeAttribute("hidden");
+      container.classList.add("open");
+      toggle.setAttribute("aria-expanded", "true");
+      if (searchInput instanceof HTMLInputElement) {
+        searchInput.value = "";
+      }
+      filterOptions("");
+      window.requestAnimationFrame(() => {
+        if (searchInput instanceof HTMLInputElement) {
+          searchInput.focus();
+        }
+      });
+    };
+
+    const resetSelection = ({ silent } = {}) => {
+      if (flagEl) flagEl.textContent = DEFAULT_FLAG;
+      if (labelEl) labelEl.textContent = DEFAULT_LABEL;
+      if (dialEl) dialEl.textContent = "";
+      toggle.setAttribute("data-placeholder", "true");
+      hiddenInput.value = "";
+      if (codeInput instanceof HTMLInputElement) {
+        codeInput.value = "";
+      }
+      if (!silent) {
+        updateStepActionState();
+      }
+    };
+
+    const selectCountry = (country, { silent } = {}) => {
+      if (!country) return;
+      if (flagEl) flagEl.textContent = country.flag;
+      if (labelEl) labelEl.textContent = country.name;
+      if (dialEl) dialEl.textContent = `${country.dialCode} · ${country.english}`;
+      toggle.setAttribute("data-placeholder", "false");
+      hiddenInput.value = country.name;
+      hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
+      hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
+      if (codeInput instanceof HTMLInputElement) {
+        codeInput.value = country.dialCode;
+      }
+      if (!silent) {
+        updateStepActionState();
+      }
+    };
+
+    resetSelection({ silent: true });
+    filterOptions("");
+
+    if (!container.dataset.boundCountry) {
+      const handleDocumentClick = (event) => {
+        if (!container.classList.contains("open")) return;
+        if (container.contains(event.target)) return;
+        closeMenu();
+      };
+
+      toggle.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (container.classList.contains("open")) {
+          closeMenu();
+        } else {
+          openMenu();
+        }
+      });
+
+      toggle.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowDown" || event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openMenu();
+        } else if (event.key === "Escape") {
+          closeMenu();
+        }
+      });
+
+      if (searchInput instanceof HTMLInputElement) {
+        searchInput.addEventListener("input", (event) => {
+          filterOptions(event.target.value || "");
+        });
+        searchInput.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown") {
+            event.preventDefault();
+            const firstOption = optionsList.querySelector("[data-country-option]");
+            if (firstOption instanceof HTMLElement) {
+              firstOption.focus();
+            }
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            closeMenu();
+            toggle.focus();
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+          }
+        });
+      }
+
+      const focusOption = (base, direction) => {
+        const buttons = [...optionsList.querySelectorAll("[data-country-option]")];
+        if (!buttons.length) return;
+        if (direction === "first") {
+          buttons[0].focus();
+          return;
+        }
+        if (direction === "last") {
+          buttons[buttons.length - 1].focus();
+          return;
+        }
+        const currentIndex = base ? buttons.indexOf(base) : -1;
+        const nextIndex = currentIndex < 0 ? (direction > 0 ? 0 : buttons.length - 1) : Math.max(0, Math.min(buttons.length - 1, currentIndex + direction));
+        buttons[nextIndex].focus();
+      };
+
+      optionsList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-country-option]");
+        if (!button) return;
+        const iso = button.dataset.countryIso;
+        const name = button.dataset.countryName;
+        const dial = button.dataset.countryDial;
+        const country = COUNTRY_LIST.find((item) => item.iso2 === iso && item.dialCode === dial && item.name === name) ||
+          COUNTRY_LIST.find((item) => item.iso2 === iso) ||
+          COUNTRY_LIST.find((item) => item.name === name);
+        if (country) {
+          selectCountry(country);
+          closeMenu();
+          toggle.focus();
+        }
+      });
+
+      optionsList.addEventListener("keydown", (event) => {
+        const option = event.target.closest("[data-country-option]");
+        if (!option) return;
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          focusOption(option, 1);
+        } else if (event.key === "ArrowUp") {
+          event.preventDefault();
+          focusOption(option, -1);
+        } else if (event.key === "Home") {
+          event.preventDefault();
+          focusOption(option, "first");
+        } else if (event.key === "End") {
+          event.preventDefault();
+          focusOption(option, "last");
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          closeMenu();
+          toggle.focus();
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          option.click();
+        }
+      });
+
+      document.addEventListener("click", handleDocumentClick);
+
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          resetSelection({ silent: true });
+          closeMenu();
+          updateStepActionState();
+        });
+      });
+
+      container.dataset.boundCountry = "true";
+    } else {
+      resetSelection({ silent: true });
+      closeMenu();
+      filterOptions("");
+    }
+  };
+
   const showStep = (index) => {
     currentStep = Math.max(0, Math.min(index, totalSteps - 1));
     steps.forEach((stepEl, idx) => {
@@ -840,6 +1225,21 @@ function openNewDialog() {
         alert("전략물자 여부를 선택해주세요.");
         options[0]?.focus();
         return false;
+      }
+    }
+    const hiddenRequired = $$('[data-required-hidden]', stepEl);
+    for (const hidden of hiddenRequired) {
+      if (hidden instanceof HTMLInputElement || hidden instanceof HTMLTextAreaElement) {
+        if ((hidden.value ?? "").trim() === "") {
+          const message = hidden.dataset.requiredMessage || "필수 항목을 선택해주세요.";
+          alert(message);
+          const focusSelector = hidden.dataset.targetSelector;
+          const target = focusSelector ? stepEl.querySelector(focusSelector) : null;
+          if (target instanceof HTMLElement) {
+            target.focus();
+          }
+          return false;
+        }
       }
     }
     const inputs = $$("input, select, textarea", stepEl);
@@ -909,6 +1309,7 @@ function openNewDialog() {
   }
 
   setupStrategicGroup();
+  setupCountrySelector();
   toggleExportTypeDetail();
 
   form.onsubmit = async (e) => {
