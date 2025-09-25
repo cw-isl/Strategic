@@ -1064,6 +1064,19 @@ function openNewDialog() {
       }
     }
 
+    if (stepEl.hasAttribute("data-packing-step")) {
+      const packingState = form._packingState;
+      if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
+        return false;
+      }
+      const hasValidItems = packingState.packings.every(
+        (packing) => Array.isArray(packing.itemKeys) && packing.itemKeys.length > 0
+      );
+      if (!hasValidItems) {
+        return false;
+      }
+    }
+
     return true;
   };
 
@@ -1585,10 +1598,22 @@ function openNewDialog() {
 
     const state = form._itemTableState || {};
     form._itemTableState = state;
+    if (typeof state.rowIdCounter !== "number") {
+      state.rowIdCounter = 0;
+    }
+
+    const assignRowKey = (row) => {
+      if (!row) return;
+      if (!row.dataset.itemKey) {
+        state.rowIdCounter += 1;
+        row.dataset.itemKey = `item-${state.rowIdCounter}`;
+      }
+    };
 
     const createRow = () => {
       const row = document.createElement("tr");
       row.setAttribute("data-item-row", "");
+      assignRowKey(row);
       row.innerHTML = `
         <td><input type="checkbox" data-item-select /></td>
         <td><input type="number" name="itemNo" data-item-input required min="1" step="1" placeholder="예: 1" /></td>
@@ -1703,10 +1728,367 @@ function openNewDialog() {
       resetRows();
     } else {
       const rows = $$('[data-item-row]', itemRows);
-      rows.forEach((row) => setupOriginField(row));
+      rows.forEach((row) => {
+        assignRowKey(row);
+        setupOriginField(row);
+      });
       updateRowNumbers();
       updateStepActionState();
     }
+  };
+
+  const setupPackingStep = () => {
+    const packingStep = form.querySelector('[data-packing-step]');
+    if (!packingStep) return;
+
+    const state = form._packingState || {};
+    if (!Array.isArray(state.packings)) {
+      state.packings = [];
+    }
+    if (!(state.selection instanceof Set)) {
+      state.selection = new Set(state.selection ? Array.from(state.selection) : []);
+    }
+    if (!Array.isArray(state.items)) {
+      state.items = [];
+    }
+    form._packingState = state;
+
+    const dimensionFormatter = new Intl.NumberFormat('ko-KR', {
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    });
+    const quantityFormatter = new Intl.NumberFormat('ko-KR', {
+      maximumFractionDigits: 0,
+    });
+
+    const itemRowsRoot = form.querySelector('[data-item-rows]');
+    const packingList = packingStep.querySelector('[data-packing-list]');
+    const packingEmpty = packingStep.querySelector('[data-packing-empty]');
+    const packingItemsBody = packingStep.querySelector('[data-packing-items-body]');
+    const selectAllCheckbox = packingStep.querySelector('[data-packing-select-all]');
+    const createButton = packingStep.querySelector('[data-packing-create]');
+    const inputs = {
+      name: packingStep.querySelector('[data-packing-field="name"]'),
+      length: packingStep.querySelector('[data-packing-field="length"]'),
+      width: packingStep.querySelector('[data-packing-field="width"]'),
+      height: packingStep.querySelector('[data-packing-field="height"]'),
+      cbm: packingStep.querySelector('[data-packing-field="cbm"]'),
+    };
+
+    const ensureDefaultName = () => {
+      if (!(inputs.name instanceof HTMLInputElement)) return;
+      if ((inputs.name.value ?? '').trim() === '') {
+        const nextIndex = state.packings.length + 1;
+        inputs.name.value = `Packing ${String(nextIndex).padStart(2, '0')}`;
+      }
+    };
+
+    const getInputNumber = (input) => {
+      if (!(input instanceof HTMLInputElement)) return null;
+      const value = Number(input.value);
+      return Number.isFinite(value) ? value : null;
+    };
+
+    const gatherItems = () => {
+      const rows = itemRowsRoot ? $$('[data-item-row]', itemRowsRoot) : [];
+      return rows
+        .map((row, index) => {
+          const key = row.dataset.itemKey || `row-${index}`;
+          const getValue = (selector) => {
+            const el = row.querySelector(selector);
+            return el && 'value' in el ? String(el.value).trim() : '';
+          };
+          const quantityValue = Number(getValue('input[name="itemQuantity"]'));
+          return {
+            key,
+            no: getValue('input[name="itemNo"]'),
+            name: getValue('input[name="itemName"]'),
+            category: getValue('input[name="itemCategory"]'),
+            quantity: Number.isFinite(quantityValue) ? quantityValue : 0,
+          };
+        })
+        .filter((item) => item.name || item.category || item.no);
+    };
+
+    const updateSelectAllState = () => {
+      if (!(selectAllCheckbox instanceof HTMLInputElement)) return;
+      const total = state.items.length;
+      const selected = state.items.filter((item) => state.selection.has(item.key)).length;
+      selectAllCheckbox.disabled = total === 0;
+      selectAllCheckbox.checked = total > 0 && selected === total;
+      selectAllCheckbox.indeterminate = selected > 0 && selected < total;
+    };
+
+    const renderPackings = () => {
+      if (!(packingList instanceof HTMLElement)) return;
+      const itemsMap = new Map(state.items.map((item) => [item.key, item]));
+      state.packings.forEach((packing) => {
+        packing.itemKeys = Array.isArray(packing.itemKeys)
+          ? packing.itemKeys.filter((key) => itemsMap.has(key))
+          : [];
+      });
+      if (packingEmpty instanceof HTMLElement) {
+        packingEmpty.hidden = state.packings.length > 0;
+      }
+      if (!state.packings.length) {
+        packingList.innerHTML = '';
+        return;
+      }
+      packingList.innerHTML = state.packings
+        .map((packing) => {
+          const items = packing.itemKeys.map((key) => itemsMap.get(key)).filter(Boolean);
+          const totalQuantity = items.reduce((sum, item) => {
+            const quantity = Number(item?.quantity ?? 0);
+            return sum + (Number.isFinite(quantity) ? quantity : 0);
+          }, 0);
+          const dimensionTags = [
+            { label: 'L', value: packing.length },
+            { label: 'W', value: packing.width },
+            { label: 'H', value: packing.height },
+          ]
+            .filter((dim) => Number.isFinite(dim.value))
+            .map((dim) => `<span>${escapeHtml(dim.label)} ${escapeHtml(dimensionFormatter.format(dim.value))}</span>`)
+            .join('');
+          const cbmTag = Number.isFinite(packing.cbm)
+            ? `<span>CBM ${escapeHtml(packing.cbm.toFixed(3))}</span>`
+            : '';
+          const itemsList = items.length
+            ? items
+                .map((item) => {
+                  const name = item?.name ? escapeHtml(item.name) : '-';
+                  const category = item?.category ? ` (${escapeHtml(item.category)})` : '';
+                  const quantityText = escapeHtml(quantityFormatter.format(Number(item?.quantity ?? 0)));
+                  return `<li><span>${name}${category}</span><span>${quantityText}</span></li>`;
+                })
+                .join('')
+            : '<li><span>품목 없음</span><span>-</span></li>';
+          return `
+            <li class="packing-card">
+              <button type="button" class="packing-card-delete" data-packing-delete data-packing-id="${escapeHtml(
+                packing.id
+              )}" aria-label="팩킹 삭제">✕</button>
+              <div class="packing-card-title">${escapeHtml(packing.name)}</div>
+              <div class="packing-card-meta">${dimensionTags}${cbmTag}</div>
+              <div class="packing-card-summary">
+                <span>품목 ${escapeHtml(String(items.length))}개</span>
+                <span>총 수량 ${escapeHtml(quantityFormatter.format(totalQuantity))}</span>
+              </div>
+              <div class="packing-card-details">
+                <h5>${escapeHtml(packing.name)} 내용</h5>
+                <ul>${itemsList}</ul>
+              </div>
+            </li>
+          `;
+        })
+        .join('');
+    };
+
+    const renderItemTable = () => {
+      state.items = gatherItems();
+      const validKeys = new Set(state.items.map((item) => item.key));
+      state.selection = new Set([...state.selection].filter((key) => validKeys.has(key)));
+      if (!(packingItemsBody instanceof HTMLElement)) {
+        updateSelectAllState();
+        renderPackings();
+        updateStepActionState();
+        return;
+      }
+      const rowsHtml = state.items.length
+        ? state.items
+            .map(
+              (item) => `
+                <tr data-packing-item-row data-item-key="${escapeHtml(item.key)}">
+                  <td class="text-center">
+                    <input type="checkbox" data-packing-item-checkbox data-item-key="${escapeHtml(item.key)}"${
+                      state.selection.has(item.key) ? ' checked' : ''
+                    } />
+                  </td>
+                  <td>${escapeHtml(item.no || '-')}</td>
+                  <td>${escapeHtml(item.name || '-')}</td>
+                  <td>${escapeHtml(item.category || '-')}</td>
+                  <td class="text-right">${escapeHtml(quantityFormatter.format(Number(item.quantity ?? 0)))}</td>
+                </tr>
+              `
+            )
+            .join('')
+        : '<tr><td colspan="5" class="packing-items-empty">품목정보 단계에서 입력한 품목이 없습니다.</td></tr>';
+      packingItemsBody.innerHTML = rowsHtml;
+      updateSelectAllState();
+      renderPackings();
+      updateStepActionState();
+    };
+
+    const updateCbmFromDimensions = () => {
+      if (!(inputs.cbm instanceof HTMLInputElement)) return;
+      const lengthValue = getInputNumber(inputs.length);
+      const widthValue = getInputNumber(inputs.width);
+      const heightValue = getInputNumber(inputs.height);
+      if (inputs.cbm.dataset.manual === 'true') {
+        return;
+      }
+      if (
+        Number.isFinite(lengthValue) &&
+        Number.isFinite(widthValue) &&
+        Number.isFinite(heightValue)
+      ) {
+        const cbmValue = (lengthValue * widthValue * heightValue) / 1_000_000;
+        if (Number.isFinite(cbmValue)) {
+          inputs.cbm.value = cbmValue === 0 ? '0' : cbmValue.toFixed(3);
+        } else {
+          inputs.cbm.value = '';
+        }
+      } else {
+        inputs.cbm.value = '';
+      }
+    };
+
+    const resetDimensionFields = () => {
+      if (inputs.length instanceof HTMLInputElement) inputs.length.value = '';
+      if (inputs.width instanceof HTMLInputElement) inputs.width.value = '';
+      if (inputs.height instanceof HTMLInputElement) inputs.height.value = '';
+      if (inputs.cbm instanceof HTMLInputElement) {
+        inputs.cbm.value = '';
+        delete inputs.cbm.dataset.manual;
+      }
+    };
+
+    const handleCreate = () => {
+      if (!(inputs.name instanceof HTMLInputElement)) return;
+      const name = inputs.name.value.trim();
+      if (!name) {
+        alert('팩킹명을 입력해주세요.');
+        inputs.name.focus();
+        return;
+      }
+      const lengthValue = getInputNumber(inputs.length);
+      if (!Number.isFinite(lengthValue) || lengthValue <= 0) {
+        alert('Length 값을 입력해주세요.');
+        inputs.length?.focus();
+        return;
+      }
+      const widthValue = getInputNumber(inputs.width);
+      if (!Number.isFinite(widthValue) || widthValue <= 0) {
+        alert('Width 값을 입력해주세요.');
+        inputs.width?.focus();
+        return;
+      }
+      const heightValue = getInputNumber(inputs.height);
+      if (!Number.isFinite(heightValue) || heightValue <= 0) {
+        alert('Height 값을 입력해주세요.');
+        inputs.height?.focus();
+        return;
+      }
+      const selectedItems = state.items.filter((item) => state.selection.has(item.key));
+      if (!selectedItems.length) {
+        alert('팩킹에 포함할 품목을 선택해주세요.');
+        return;
+      }
+      const cbmInputValue = getInputNumber(inputs.cbm);
+      const computedCbm = (lengthValue * widthValue * heightValue) / 1_000_000;
+      const cbmValue = Number.isFinite(cbmInputValue) ? cbmInputValue : computedCbm;
+      const packing = {
+        id: `packing-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name,
+        length: lengthValue,
+        width: widthValue,
+        height: heightValue,
+        cbm: Number.isFinite(cbmValue) ? Number(cbmValue) : null,
+        itemKeys: selectedItems.map((item) => item.key),
+      };
+      state.packings.push(packing);
+      state.selection.clear();
+      if (inputs.name instanceof HTMLInputElement) {
+        inputs.name.value = '';
+      }
+      resetDimensionFields();
+      renderItemTable();
+      renderPackings();
+      ensureDefaultName();
+      updateStepActionState();
+    };
+
+    const handleDelete = (id) => {
+      if (!id) return;
+      state.packings = state.packings.filter((packing) => packing.id !== id);
+      renderPackings();
+      ensureDefaultName();
+      updateStepActionState();
+    };
+
+    if (!state.bound) {
+      if (itemRowsRoot instanceof HTMLElement) {
+        const handleItemsChange = () => {
+          renderItemTable();
+        };
+        itemRowsRoot.addEventListener('input', handleItemsChange);
+        itemRowsRoot.addEventListener('change', handleItemsChange);
+      }
+      if (packingItemsBody instanceof HTMLElement) {
+        packingItemsBody.addEventListener('change', (event) => {
+          const checkbox = event.target.closest('[data-packing-item-checkbox]');
+          if (!(checkbox instanceof HTMLInputElement)) return;
+          const key = checkbox.dataset.itemKey;
+          if (!key) return;
+          if (checkbox.checked) {
+            state.selection.add(key);
+          } else {
+            state.selection.delete(key);
+          }
+          updateSelectAllState();
+        });
+      }
+      if (selectAllCheckbox instanceof HTMLInputElement) {
+        selectAllCheckbox.addEventListener('change', () => {
+          if (selectAllCheckbox.checked) {
+            state.selection = new Set(state.items.map((item) => item.key));
+          } else {
+            state.selection.clear();
+          }
+          renderItemTable();
+        });
+      }
+      if (createButton instanceof HTMLButtonElement) {
+        createButton.addEventListener('click', handleCreate);
+      }
+      if (packingList instanceof HTMLElement) {
+        packingList.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-packing-delete]');
+          if (!(button instanceof HTMLButtonElement)) return;
+          const packingId = button.dataset.packingId;
+          handleDelete(packingId);
+        });
+      }
+      if (inputs.cbm instanceof HTMLInputElement) {
+        inputs.cbm.addEventListener('input', () => {
+          inputs.cbm.dataset.manual = inputs.cbm.value ? 'true' : '';
+        });
+      }
+      [inputs.length, inputs.width, inputs.height].forEach((input) => {
+        if (input instanceof HTMLInputElement) {
+          input.addEventListener('input', () => {
+            updateCbmFromDimensions();
+          });
+        }
+      });
+      form.addEventListener('reset', () => {
+        window.requestAnimationFrame(() => {
+          state.packings = [];
+          state.selection = new Set();
+          state.items = [];
+          resetDimensionFields();
+          renderItemTable();
+          renderPackings();
+          ensureDefaultName();
+          updateStepActionState();
+        });
+      });
+      state.bound = true;
+    }
+
+    renderItemTable();
+    ensureDefaultName();
+    renderPackings();
+    updateStepActionState();
   };
 
   const showStep = (index) => {
@@ -1760,6 +2142,28 @@ function openNewDialog() {
       if (input.disabled) continue;
       if (typeof input.reportValidity === "function" && !input.reportValidity()) {
         input.focus();
+        return false;
+      }
+    }
+    if (stepEl.hasAttribute("data-packing-step")) {
+      const packingState = form._packingState;
+      if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
+        alert("최소 한 개 이상의 팩킹을 생성해주세요.");
+        const target = stepEl.querySelector('[data-packing-create]');
+        if (target instanceof HTMLElement) {
+          target.focus();
+        }
+        return false;
+      }
+      const invalidPacking = packingState.packings.find(
+        (packing) => !Array.isArray(packing.itemKeys) || packing.itemKeys.length === 0
+      );
+      if (invalidPacking) {
+        alert("각 팩킹에 포함할 품목을 선택해주세요.");
+        const target = stepEl.querySelector('[data-packing-create]');
+        if (target instanceof HTMLElement) {
+          target.focus();
+        }
         return false;
       }
     }
@@ -1828,6 +2232,7 @@ function openNewDialog() {
   setupTransportModeField();
   setupIncotermsField();
   setupItemTable();
+  setupPackingStep();
   toggleExportTypeDetail();
 
   form.onsubmit = async (e) => {

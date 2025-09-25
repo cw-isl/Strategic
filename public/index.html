@@ -38,7 +38,7 @@
     <form id="newExportForm" method="dialog" class="card">
       <header class="dialog-header">
         <h3 id="newExportTitle">수출 신규등록</h3>
-        <p id="newExportStep" class="step-indicator" aria-live="polite">1 / 12</p>
+        <p id="newExportStep" class="step-indicator" aria-live="polite">1 / 13</p>
         <p id="newExportSection" class="step-title">수출목적</p>
       </header>
       <div class="step-container">
@@ -223,6 +223,66 @@
               <tbody data-item-rows></tbody>
             </table>
           </div>
+        </section>
+        <section class="step" data-step="12" data-step-title="팩킹리스트" data-packing-step>
+          <div class="packing-layout">
+            <section class="packing-panel">
+              <header class="packing-panel-header">
+                <h4>팩킹정보</h4>
+                <p>생성된 Packing의 요약을 확인하세요.</p>
+              </header>
+              <p class="packing-empty" data-packing-empty>등록된 팩킹이 없습니다. 오른쪽에서 팩킹을 생성해주세요.</p>
+              <ul class="packing-card-list" data-packing-list></ul>
+            </section>
+            <section class="packing-panel">
+              <header class="packing-panel-header">
+                <h4>팩킹 생성</h4>
+                <p>Packing 정보를 입력해주세요.</p>
+              </header>
+              <div class="packing-form" data-packing-form>
+                <label>팩킹명
+                  <input type="text" name="packingName" data-packing-field="name" placeholder="예: Packing 01" />
+                </label>
+                <div class="packing-dimension-grid">
+                  <label>Length (cm)
+                    <input type="number" name="packingLength" min="0" step="0.1" data-packing-field="length" placeholder="0" />
+                  </label>
+                  <label>Width (cm)
+                    <input type="number" name="packingWidth" min="0" step="0.1" data-packing-field="width" placeholder="0" />
+                  </label>
+                  <label>Height (cm)
+                    <input type="number" name="packingHeight" min="0" step="0.1" data-packing-field="height" placeholder="0" />
+                  </label>
+                  <label>CBM
+                    <input type="number" name="packingCbm" min="0" step="0.001" data-packing-field="cbm" placeholder="0.000" />
+                  </label>
+                </div>
+                <div class="packing-form-actions">
+                  <button type="button" class="btn primary" data-packing-create>생성</button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <section class="packing-items">
+            <header class="packing-panel-header">
+              <h4>품목정보</h4>
+              <p>팩킹에 포함할 품목을 선택해주세요.</p>
+            </header>
+            <div class="packing-items-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col"><input type="checkbox" data-packing-select-all aria-label="전체 선택" /></th>
+                    <th scope="col">NO</th>
+                    <th scope="col">품명</th>
+                    <th scope="col">품목구분</th>
+                    <th scope="col">수량</th>
+                  </tr>
+                </thead>
+                <tbody data-packing-items-body></tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </div>
       <menu class="dialog-actions">
