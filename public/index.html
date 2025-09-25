@@ -246,42 +246,53 @@
         </section>
         <section class="step" data-step="12" data-step-title="팩킹리스트" data-packing-step>
           <div class="packing-layout">
-            <section class="packing-panel">
-              <header class="packing-panel-header">
-                <h4>팩킹정보</h4>
-                <p>생성된 Packing의 요약을 확인하세요.</p>
-              </header>
-              <p class="packing-empty" data-packing-empty>등록된 팩킹이 없습니다. 오른쪽에서 팩킹을 생성해주세요.</p>
-              <ul class="packing-card-list" data-packing-list></ul>
-            </section>
-            <section class="packing-panel">
-              <header class="packing-panel-header">
-                <h4>팩킹 생성</h4>
-                <p>Packing 정보를 입력해주세요.</p>
-              </header>
-              <div class="packing-form" data-packing-form>
-                <label>팩킹명
-                  <input type="text" name="packingName" data-packing-field="name" placeholder="예: Packing 01" />
-                </label>
-                <div class="packing-dimension-grid">
-                  <label>Length (cm)
-                    <input type="number" name="packingLength" min="0" step="0.1" data-packing-field="length" placeholder="0" />
+            <div class="packing-layout-actions">
+              <button type="button" class="btn primary" data-packing-open>팩킹 생성</button>
+            </div>
+            <div class="packing-layout-body">
+              <section class="packing-panel">
+                <header class="packing-panel-header">
+                  <div class="packing-panel-heading">
+                    <h4>팩킹정보</h4>
+                    <p>생성된 Packing의 요약을 확인하세요.</p>
+                  </div>
+                </header>
+                <p class="packing-empty" data-packing-empty>등록된 팩킹이 없습니다. 우측 상단의 버튼을 눌러 팩킹을 생성해주세요.</p>
+                <ul class="packing-card-list" data-packing-list></ul>
+              </section>
+              <section class="packing-panel packing-create-panel" data-packing-panel hidden>
+                <header class="packing-panel-header">
+                  <div class="packing-panel-heading">
+                    <h4>팩킹 생성</h4>
+                    <p>Packing 정보를 입력해주세요.</p>
+                  </div>
+                  <button type="button" class="packing-panel-close" data-packing-close aria-label="팩킹 생성 닫기">×</button>
+                </header>
+                <div class="packing-form" data-packing-form>
+                  <label>팩킹명
+                    <input type="text" name="packingName" data-packing-field="name" placeholder="예: Packing 01" />
                   </label>
-                  <label>Width (cm)
-                    <input type="number" name="packingWidth" min="0" step="0.1" data-packing-field="width" placeholder="0" />
-                  </label>
-                  <label>Height (cm)
-                    <input type="number" name="packingHeight" min="0" step="0.1" data-packing-field="height" placeholder="0" />
-                  </label>
-                  <label>CBM
-                    <input type="number" name="packingCbm" min="0" step="0.001" data-packing-field="cbm" placeholder="0.000" />
-                  </label>
+                  <div class="packing-dimension-grid">
+                    <label>Length (cm)
+                      <input type="number" name="packingLength" min="0" step="0.1" data-packing-field="length" placeholder="0" />
+                    </label>
+                    <label>Width (cm)
+                      <input type="number" name="packingWidth" min="0" step="0.1" data-packing-field="width" placeholder="0" />
+                    </label>
+                    <label>Height (cm)
+                      <input type="number" name="packingHeight" min="0" step="0.1" data-packing-field="height" placeholder="0" />
+                    </label>
+                    <label>CBM
+                      <input type="number" name="packingCbm" min="0" step="0.001" data-packing-field="cbm" placeholder="0.000" />
+                    </label>
+                  </div>
+                  <div class="packing-form-actions">
+                    <button type="button" class="btn" data-packing-cancel>취소</button>
+                    <button type="button" class="btn primary" data-packing-create>생성</button>
+                  </div>
                 </div>
-                <div class="packing-form-actions">
-                  <button type="button" class="btn primary" data-packing-create>생성</button>
-                </div>
-              </div>
-            </section>
+              </section>
+            </div>
           </div>
           <section class="packing-items">
             <header class="packing-panel-header">
