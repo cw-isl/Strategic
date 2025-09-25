@@ -10,12 +10,14 @@ body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Apple SD Got
 /* Topbar */
 .topbar{position:sticky;top:0;z-index:10;background:var(--blue);color:#fff;border-bottom:1px solid #0e2a5b}
 .topbar-inner{max-width:var(--maxw);margin:0 auto;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem}
-.tab{color:#fff;text-decoration:none;padding:.35rem .6rem;border-radius:2px;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;background:transparent;border:1px solid transparent}
+.tab{color:#fff;text-decoration:none;padding:.35rem .6rem;border-radius:2px;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;background:transparent;border:1px solid transparent;transition:background .2s ease,border-color .2s ease}
+.tab:hover{background:rgba(255,255,255,.12)}
+.tab:focus-visible{outline:2px solid rgba(255,255,255,.75);outline-offset:2px}
 .tab[aria-current="page"]{background:rgba(255,255,255,.15)}
 .menu{position:relative}
-.menu-toggle{border:none;background:transparent;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;appearance:none;-webkit-appearance:none}
+.menu-toggle{background:transparent;font:inherit;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;appearance:none;-webkit-appearance:none;border:1px solid transparent}
 .menu-toggle::after{content:"▾";font-size:.7rem;line-height:1}
-.menu-toggle[data-active="true"],.menu.open .menu-toggle{background:rgba(255,255,255,.25)}
+.menu-toggle[data-active="true"],.menu.open .menu-toggle{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.35)}
 .menu-panel{position:absolute;top:calc(100% + .35rem);left:0;min-width:190px;padding:.25rem 0;border:1px solid var(--blue);border-radius:6px;background:#fff;color:#0e2a5b;box-shadow:0 12px 24px rgba(4,20,61,.18);display:flex;flex-direction:column;z-index:20}
 .menu-panel[hidden]{display:none!important}
 .menu-item{display:flex;align-items:center;gap:.4rem;padding:.4rem .75rem;font-weight:500;font-size:.9rem;color:inherit;text-decoration:none;line-height:1.45}
