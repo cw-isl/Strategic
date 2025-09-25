@@ -618,10 +618,16 @@ function collectFormValues(form) {
   const data = {};
   const fd = new FormData(form);
   fd.forEach((value, key) => {
-    if (typeof value === "string") {
-      data[key] = value.trim();
+    const normalized = typeof value === "string" ? value.trim() : value;
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      const existing = data[key];
+      if (Array.isArray(existing)) {
+        existing.push(normalized);
+      } else {
+        data[key] = [existing, normalized];
+      }
     } else {
-      data[key] = value;
+      data[key] = normalized;
     }
   });
   return data;
@@ -647,8 +653,62 @@ function mapFormDataToPayload(data = {}) {
   const importContactPhone = trim(data.importContactPhone);
   const importEmail = trim(data.importEmail);
   const importEtc = trim(data.importEtc);
+  const notifySameAsImporter = Boolean(data.notifySameAsImporter);
+  const notifyCompanyName = trim(data.notifyCompanyName);
+  const notifyAddress = trim(data.notifyAddress);
+  const notifyCountry = trim(data.notifyCountry);
+  const notifyCountryCode = trim(data.notifyCountryCode);
+  const notifyPhone = trim(data.notifyPhone);
+  const notifyContactName = trim(data.notifyContactName);
+  const notifyContactPhone = trim(data.notifyContactPhone);
+  const notifyEmail = trim(data.notifyEmail);
+  const notifyEtc = trim(data.notifyEtc);
+  const originCountry = trim(data.originCountry);
+  const destinationCountry = trim(data.destinationCountry);
+  const dispatchDate = trim(data.dispatchDate);
+  const transportMode = trim(data.transportMode);
+  const transportOther = trim(data.transportOther);
+  const loadingDate = trim(data.loadingDate);
+  const incoterms = trim(data.incoterms);
+  const incotermsOther = trim(data.incotermsOther);
+  const paymentTerms = trim(data.paymentTerms);
+
+  const toArray = (val) => {
+    if (val === undefined || val === null) return [];
+    if (Array.isArray(val)) return val.map((item) => trim(item));
+    return [trim(val)];
+  };
+
+  const itemNos = toArray(data.itemNo);
+  const itemNames = toArray(data.itemName);
+  const itemCategories = toArray(data.itemCategory);
+  const itemQuantities = toArray(data.itemQuantity);
+  const itemUnitPrices = toArray(data.itemUnitPrice);
+  const itemTotals = toArray(data.itemTotal);
+  const itemOrigins = toArray(data.itemOrigin);
+  const itemCount = Math.max(
+    itemNos.length,
+    itemNames.length,
+    itemCategories.length,
+    itemQuantities.length,
+    itemUnitPrices.length,
+    itemTotals.length,
+    itemOrigins.length,
+  );
+
+  const items = Array.from({ length: itemCount }, (_, idx) => ({
+    no: itemNos[idx] ?? "",
+    name: itemNames[idx] ?? "",
+    category: itemCategories[idx] ?? "",
+    quantity: itemQuantities[idx] ?? "",
+    unitPrice: itemUnitPrices[idx] ?? "",
+    total: itemTotals[idx] ?? "",
+    origin: itemOrigins[idx] ?? "",
+  })).filter((item) => Object.values(item).some((value) => value !== ""));
 
   const resolvedPurpose = exportType === "기타" && exportTypeDetail ? exportTypeDetail : exportType;
+  const resolvedTransportMode = transportMode === "기타" && transportOther ? transportOther : transportMode;
+  const resolvedIncoterms = incoterms === "기타" && incotermsOther ? incotermsOther : incoterms;
 
   const payload = {
     exportType,
@@ -669,6 +729,26 @@ function mapFormDataToPayload(data = {}) {
     importContactPhone,
     importEmail,
     importEtc,
+    notifySameAsImporter,
+    notifyCompanyName,
+    notifyAddress,
+    notifyCountry,
+    notifyCountryCode,
+    notifyPhone,
+    notifyContactName,
+    notifyContactPhone,
+    notifyEmail,
+    notifyEtc,
+    originCountry,
+    destinationCountry,
+    dispatchDate,
+    transportMode,
+    transportOther: transportMode === "기타" ? transportOther : "",
+    loadingDate,
+    incoterms,
+    incotermsOther: incoterms === "기타" ? incotermsOther : "",
+    paymentTerms,
+    items,
     requester: {
       name: managerName,
       department: managerDepartment,
@@ -685,6 +765,29 @@ function mapFormDataToPayload(data = {}) {
       contactPhone: importContactPhone,
       email: importEmail,
       etc: importEtc,
+    },
+    notifyParty: {
+      sameAsImporter: notifySameAsImporter,
+      companyName: notifyCompanyName,
+      address: notifyAddress,
+      country: notifyCountry,
+      countryCode: notifyCountryCode,
+      phone: notifyPhone,
+      contactName: notifyContactName,
+      contactPhone: notifyContactPhone,
+      email: notifyEmail,
+      etc: notifyEtc,
+    },
+    shipment: {
+      originCountry,
+      destinationCountry,
+      dispatchDate,
+      loadingDate,
+      transportMode: resolvedTransportMode,
+      transportModeRaw: transportMode,
+      incoterms: resolvedIncoterms,
+      incotermsRaw: incoterms,
+      paymentTerms,
     },
     shipmentType: exportType,
     shipmentPurpose: resolvedPurpose,
@@ -855,6 +958,18 @@ function openNewDialog() {
     ? $$('input[type="checkbox"][data-strategic-option]', strategicGroup)
     : [];
   const countrySelectContainer = form.querySelector("[data-country-select]");
+  const simpleCountrySelects = $$('[data-country-select-simple]', form);
+  const notifyCheckbox = form.querySelector('[data-notify-copy]');
+  const transportModeSelect = form.querySelector('select[name=transportMode]');
+  const transportDetailLabel = form.querySelector('[data-transport-detail]');
+  const transportOtherInput = form.querySelector('input[name=transportOther]');
+  const incotermsSelect = form.querySelector('select[name=incoterms]');
+  const incotermsDetailLabel = form.querySelector('[data-incoterms-detail]');
+  const incotermsOtherInput = form.querySelector('input[name=incotermsOther]');
+  const itemsStep = form.querySelector('[data-items-step]');
+  const itemRows = itemsStep?.querySelector('[data-item-rows]');
+  const addItemButton = itemsStep?.querySelector('[data-item-add]');
+  const removeItemButton = itemsStep?.querySelector('[data-item-remove]');
 
   const isStepComplete = (index) => {
     const stepEl = steps[index];
@@ -885,6 +1000,20 @@ function openNewDialog() {
       if (hidden instanceof HTMLInputElement || hidden instanceof HTMLTextAreaElement) {
         if ((hidden.value ?? "").trim() === "") {
           return false;
+        }
+      }
+    }
+
+    if (stepEl.hasAttribute("data-items-step")) {
+      const rows = $$('[data-item-row]', stepEl);
+      if (!rows.length) return false;
+      for (const row of rows) {
+        const inputs = $$('[data-item-input]', row);
+        for (const input of inputs) {
+          if (input.disabled) continue;
+          if (typeof input.value === "string" && input.value.trim() === "") {
+            return false;
+          }
         }
       }
     }
@@ -1196,6 +1325,303 @@ function openNewDialog() {
     }
   };
 
+  const findCountryByName = (name) => {
+    if (!name) return undefined;
+    return COUNTRY_LIST.find((country) => country.name === name);
+  };
+
+  const ensureSimpleCountryOptions = (select) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+    if (select.dataset.simpleOptionsLoaded === "true") return;
+    const options = COUNTRY_LIST.map((country) => `<option value="${escapeHtml(country.name)}">${escapeHtml(country.name)}</option>`).join("");
+    const placeholderOption = select.querySelector('option[value=""]');
+    const placeholderHtml = placeholderOption ? placeholderOption.outerHTML : '<option value="">선택</option>';
+    select.innerHTML = `${placeholderHtml}${options}`;
+    select.dataset.simpleOptionsLoaded = "true";
+  };
+
+  const updateSimpleSelectDial = (select) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+    const targetName = select.dataset.codeTarget;
+    if (!targetName) return;
+    const target = form.querySelector(`[name="${targetName}"]`);
+    if (!(target instanceof HTMLInputElement)) return;
+    const selectedCountry = findCountryByName(select.value);
+    target.value = selectedCountry ? selectedCountry.dialCode : "";
+  };
+
+  const setupSimpleCountrySelects = () => {
+    if (!simpleCountrySelects.length) return;
+    simpleCountrySelects.forEach((select) => {
+      if (!(select instanceof HTMLSelectElement)) return;
+      ensureSimpleCountryOptions(select);
+      updateSimpleSelectDial(select);
+      if (!select.dataset.boundSimpleCountry) {
+        select.addEventListener("change", () => {
+          updateSimpleSelectDial(select);
+          updateStepActionState();
+        });
+        form.addEventListener("reset", () => {
+          window.requestAnimationFrame(() => {
+            updateSimpleSelectDial(select);
+            updateStepActionState();
+          });
+        });
+        select.dataset.boundSimpleCountry = "true";
+      }
+    });
+  };
+
+  const setupNotifyCopy = () => {
+    if (!notifyCheckbox) return;
+
+    const importerFields = {
+      company: form.querySelector('input[name="importCompanyName"]'),
+      address: form.querySelector('input[name="importAddress"]'),
+      country: form.querySelector('input[name="importCountry"]'),
+      countryCode: form.querySelector('input[name="importCountryCode"]'),
+      phone: form.querySelector('input[name="importPhone"]'),
+      contactName: form.querySelector('input[name="importContactName"]'),
+      contactPhone: form.querySelector('input[name="importContactPhone"]'),
+      email: form.querySelector('input[name="importEmail"]'),
+      etc: form.querySelector('textarea[name="importEtc"]'),
+    };
+
+    const notifyFields = {
+      company: form.querySelector('input[name="notifyCompanyName"]'),
+      address: form.querySelector('input[name="notifyAddress"]'),
+      country: form.querySelector('select[name="notifyCountry"]'),
+      countryCode: form.querySelector('input[name="notifyCountryCode"]'),
+      phone: form.querySelector('input[name="notifyPhone"]'),
+      contactName: form.querySelector('input[name="notifyContactName"]'),
+      contactPhone: form.querySelector('input[name="notifyContactPhone"]'),
+      email: form.querySelector('input[name="notifyEmail"]'),
+      etc: form.querySelector('textarea[name="notifyEtc"]'),
+    };
+
+    const state = form._notifyCopyState || { suppress: false };
+    form._notifyCopyState = state;
+
+    const copyFields = () => {
+      state.suppress = true;
+      if (notifyFields.company && importerFields.company) notifyFields.company.value = importerFields.company.value;
+      if (notifyFields.address && importerFields.address) notifyFields.address.value = importerFields.address.value;
+      if (notifyFields.phone && importerFields.phone) notifyFields.phone.value = importerFields.phone.value;
+      if (notifyFields.contactName && importerFields.contactName) notifyFields.contactName.value = importerFields.contactName.value;
+      if (notifyFields.contactPhone && importerFields.contactPhone) notifyFields.contactPhone.value = importerFields.contactPhone.value;
+      if (notifyFields.email && importerFields.email) notifyFields.email.value = importerFields.email.value;
+      if (notifyFields.etc && importerFields.etc) notifyFields.etc.value = importerFields.etc.value;
+
+      const importCountryValue = importerFields.country?.value ?? "";
+      if (notifyFields.country instanceof HTMLSelectElement) {
+        ensureSimpleCountryOptions(notifyFields.country);
+        const hasOption = Array.from(notifyFields.country.options).some((option) => option.value === importCountryValue);
+        notifyFields.country.value = hasOption ? importCountryValue : "";
+        notifyFields.country.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      if (notifyFields.countryCode && importerFields.countryCode) {
+        notifyFields.countryCode.value = importerFields.countryCode.value;
+      }
+
+      state.suppress = false;
+      updateStepActionState();
+    };
+
+    state.copyFields = copyFields;
+
+    const handleImporterChange = () => {
+      if (!notifyCheckbox.checked) return;
+      copyFields();
+    };
+
+    const handleNotifyInput = () => {
+      if (state.suppress) return;
+      if (!notifyCheckbox.checked) return;
+      notifyCheckbox.checked = false;
+      updateStepActionState();
+    };
+
+    if (!state.bound) {
+      notifyCheckbox.addEventListener("change", () => {
+        if (notifyCheckbox.checked) {
+          copyFields();
+        }
+        updateStepActionState();
+      });
+
+      Object.values(importerFields).forEach((field) => {
+        if (!field) return;
+        field.addEventListener("input", handleImporterChange);
+        field.addEventListener("change", handleImporterChange);
+      });
+
+      Object.values(notifyFields).forEach((field) => {
+        if (!field) return;
+        if (field === notifyFields.countryCode) return;
+        field.addEventListener("input", handleNotifyInput);
+        field.addEventListener("change", handleNotifyInput);
+      });
+
+      state.bound = true;
+    }
+
+    if (notifyCheckbox.checked) {
+      copyFields();
+    }
+  };
+
+  const setupTransportModeField = () => {
+    if (!transportModeSelect || !transportOtherInput) return;
+    const toggleDetail = () => {
+      const needDetail = transportModeSelect.value === "기타";
+      if (transportDetailLabel) {
+        if (needDetail) {
+          transportDetailLabel.removeAttribute("hidden");
+        } else {
+          transportDetailLabel.setAttribute("hidden", "true");
+        }
+      }
+      transportOtherInput.disabled = !needDetail;
+      transportOtherInput.required = needDetail;
+      if (!needDetail) {
+        transportOtherInput.value = "";
+      }
+      updateStepActionState();
+    };
+
+    if (!transportModeSelect.dataset.boundTransport) {
+      transportModeSelect.addEventListener("change", toggleDetail);
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          toggleDetail();
+        });
+      });
+      transportModeSelect.dataset.boundTransport = "true";
+    }
+
+    toggleDetail();
+  };
+
+  const setupIncotermsField = () => {
+    if (!incotermsSelect || !incotermsOtherInput) return;
+    const toggleDetail = () => {
+      const needDetail = incotermsSelect.value === "기타";
+      if (incotermsDetailLabel) {
+        if (needDetail) {
+          incotermsDetailLabel.removeAttribute("hidden");
+        } else {
+          incotermsDetailLabel.setAttribute("hidden", "true");
+        }
+      }
+      incotermsOtherInput.disabled = !needDetail;
+      incotermsOtherInput.required = needDetail;
+      if (!needDetail) {
+        incotermsOtherInput.value = "";
+      }
+      updateStepActionState();
+    };
+
+    if (!incotermsSelect.dataset.boundIncoterms) {
+      incotermsSelect.addEventListener("change", toggleDetail);
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          toggleDetail();
+        });
+      });
+      incotermsSelect.dataset.boundIncoterms = "true";
+    }
+
+    toggleDetail();
+  };
+
+  const setupItemTable = () => {
+    if (!itemsStep || !itemRows) return;
+
+    const state = form._itemTableState || {};
+    form._itemTableState = state;
+
+    const createRow = () => {
+      const row = document.createElement("tr");
+      row.setAttribute("data-item-row", "");
+      row.innerHTML = `
+        <td><input type="checkbox" data-item-select /></td>
+        <td><input type="number" name="itemNo" data-item-input required min="1" step="1" placeholder="예: 1" /></td>
+        <td><input type="text" name="itemName" data-item-input required placeholder="예: 품명" /></td>
+        <td><input type="text" name="itemCategory" data-item-input required placeholder="예: 품목구분" /></td>
+        <td><input type="number" name="itemQuantity" data-item-input required min="0" step="1" placeholder="예: 10" /></td>
+        <td><input type="number" name="itemUnitPrice" data-item-input required min="0" step="0.01" placeholder="예: 1200" /></td>
+        <td><input type="number" name="itemTotal" data-item-input required min="0" step="0.01" placeholder="예: 12000" /></td>
+        <td><input type="text" name="itemOrigin" data-item-input required placeholder="예: 대한민국" /></td>
+      `;
+      return row;
+    };
+
+    const updateRowNumbers = () => {
+      const numberInputs = $$('input[name="itemNo"]', itemRows);
+      numberInputs.forEach((input, idx) => {
+        if (!input.value) {
+          input.value = String(idx + 1);
+        }
+      });
+    };
+
+    const addRow = () => {
+      const row = createRow();
+      itemRows.appendChild(row);
+      updateRowNumbers();
+      updateStepActionState();
+    };
+
+    const resetRows = () => {
+      itemRows.innerHTML = "";
+      addRow();
+    };
+
+    const removeSelectedRows = () => {
+      const rows = $$('[data-item-row]', itemRows);
+      const selectedRows = rows.filter((row) => row.querySelector('[data-item-select]')?.checked);
+      if (!selectedRows.length) {
+        alert("삭제할 행을 선택해주세요.");
+        return;
+      }
+      selectedRows.forEach((row) => row.remove());
+      if (!itemRows.children.length) {
+        addRow();
+      } else {
+        updateRowNumbers();
+        updateStepActionState();
+      }
+    };
+
+    if (!state.bound) {
+      addItemButton?.addEventListener("click", () => {
+        addRow();
+      });
+      removeItemButton?.addEventListener("click", () => {
+        removeSelectedRows();
+      });
+      itemRows.addEventListener("input", () => updateStepActionState());
+      itemRows.addEventListener("change", () => updateStepActionState());
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          resetRows();
+          updateStepActionState();
+        });
+      });
+      state.bound = true;
+    }
+
+    if (!state.initialized) {
+      resetRows();
+      state.initialized = true;
+    } else if (!itemRows.children.length) {
+      resetRows();
+    } else {
+      updateRowNumbers();
+      updateStepActionState();
+    }
+  };
+
   const showStep = (index) => {
     currentStep = Math.max(0, Math.min(index, totalSteps - 1));
     steps.forEach((stepEl, idx) => {
@@ -1310,6 +1736,11 @@ function openNewDialog() {
 
   setupStrategicGroup();
   setupCountrySelector();
+  setupSimpleCountrySelects();
+  setupNotifyCopy();
+  setupTransportModeField();
+  setupIncotermsField();
+  setupItemTable();
   toggleExportTypeDetail();
 
   form.onsubmit = async (e) => {
