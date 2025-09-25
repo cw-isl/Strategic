@@ -152,6 +152,38 @@ const COUNTRY_LIST = COUNTRY_DATA.map((item) => {
   };
 }).sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
 
+const EXPERT_CERTIFICATES = [
+  {
+    id: "cert-001",
+    name: "레이더 시스템 전문판정서",
+    description: "지상 감시 레이더 장비 판정",
+    keywords: ["레이더", "감시", "지상"],
+  },
+  {
+    id: "cert-002",
+    name: "위성통신 모듈 전문판정서",
+    description: "위성 통신용 RF 모듈 판정",
+    keywords: ["위성", "통신", "RF"],
+  },
+  {
+    id: "cert-003",
+    name: "암호장비 전문판정서",
+    description: "보안 암호장비 및 소프트웨어",
+    keywords: ["암호", "보안", "소프트웨어"],
+  },
+  {
+    id: "cert-004",
+    name: "항공전자 장비 전문판정서",
+    description: "항공전자 제어 시스템",
+    keywords: ["항공", "전자", "제어"],
+  },
+].map((item) => ({
+  ...item,
+  searchValue: [item.name, item.description, ...(item.keywords || [])]
+    .join(" ")
+    .toLowerCase(),
+}));
+
 const ITEM_CURRENCIES = [
   { value: "", label: "선택" },
   { value: "KRW", label: "KRW - 대한민국 원" },
@@ -170,12 +202,12 @@ const ITEM_CURRENCY_OPTIONS_HTML = ITEM_CURRENCIES.map(
 ).join("");
 
 const ITEM_ORIGIN_OPTIONS_HTML = [
-  '<option value="">선택</option>',
+  '<option value="" disabled selected hidden>생산국을 선택하세요</option>',
+  '<option value="기타">기타 (직접 입력)</option>',
   ...COUNTRY_LIST.map(
     (country) =>
       `<option value="${escapeHtml(country.name)}">${escapeHtml(country.name)} (${escapeHtml(country.english)})</option>`
   ),
-  '<option value="기타">기타 (직접 입력)</option>',
 ].join("");
 
 const menuContainer = $("[data-menu]");
@@ -183,18 +215,6 @@ const menuButton = menuContainer?.querySelector("[data-menu-button]");
 const menuPanel = menuContainer?.querySelector(".menu-panel");
 
 const infoPageConfigs = {
-  "/strategic-check": {
-    title: "전략물자 여부 체크",
-    description: "전략물자 여부를 확인하기 위한 기본 절차와 체크리스트를 제공합니다.",
-    body: `
-      <ol class="info-list">
-        <li>품목 분류와 HS Code를 검토하세요.</li>
-        <li>전략물자 판정 기준표와 비교하여 해당 여부를 확인합니다.</li>
-        <li>판정이 어려운 경우 담당 부서에 전문가 상담을 요청합니다.</li>
-      </ol>
-      <p class="info-note">체크 결과는 내부 기록으로 남겨 추후 감사 대비에 활용할 수 있습니다.</p>
-    `,
-  },
   "/expert-certificate": {
     title: "전략물자 전문판정서",
     description: "전문판정서 신청 절차와 준비 서류를 빠르게 확인하세요.",
@@ -227,7 +247,8 @@ const infoPageConfigs = {
 };
 
 const routes = {
-  "/": renderHome,
+  "/": () => renderDashboard("/"),
+  "/dashboard": () => renderDashboard("/dashboard"),
   "/export": renderExport,
 };
 
@@ -235,7 +256,7 @@ Object.entries(infoPageConfigs).forEach(([path, config]) => {
   routes[path] = () => renderInfoPage(path, config);
 });
 
-const menuRoutes = new Set(["/export", ...Object.keys(infoPageConfigs)]);
+const menuRoutes = new Set(["/dashboard", "/export", ...Object.keys(infoPageConfigs)]);
 let menuOpen = false;
 
 function setMenuOpen(open = false) {
@@ -270,17 +291,9 @@ document.addEventListener("keydown", (event) => {
 setMenuOpen(false);
 
 function setTopbarActive(pathname) {
-  const homeTab = $("[data-top=\"home\"]");
-  if (homeTab) {
-    if (pathname === "/") {
-      homeTab.setAttribute("aria-current", "page");
-    } else {
-      homeTab.removeAttribute("aria-current");
-    }
-  }
-
+  const normalizedPath = pathname === "/" ? "/dashboard" : pathname;
   if (menuButton) {
-    if (menuRoutes.has(pathname)) {
+    if (menuRoutes.has(normalizedPath)) {
       menuButton.setAttribute("data-active", "true");
     } else {
       menuButton.removeAttribute("data-active");
@@ -290,7 +303,7 @@ function setTopbarActive(pathname) {
   if (menuContainer) {
     $$(".menu-item", menuContainer).forEach((item) => {
       const href = item.getAttribute("href");
-      if (href === pathname) {
+      if (href === normalizedPath) {
         item.setAttribute("aria-current", "page");
       } else {
         item.removeAttribute("aria-current");
@@ -299,9 +312,10 @@ function setTopbarActive(pathname) {
   }
 }
 
-function renderHome() {
-  setTopbarActive("/");
-  document.title = "HOME | 수출 및 전략물자";
+function renderDashboard(pathname = "/dashboard") {
+  const normalizedPath = pathname === "/" ? "/dashboard" : pathname;
+  setTopbarActive(normalizedPath);
+  document.title = "Dashboard | 수출 및 전략물자";
   app.innerHTML = `
     <section class="card hero">
       <div class="hero-text">
@@ -666,6 +680,7 @@ function mapFormDataToPayload(data = {}) {
   const projectName = trim(data.projectName);
   const projectCode = trim(data.projectCode);
   const strategicFlag = trim(data.strategicFlag);
+  const strategicExpertCertificate = trim(data.strategicExpertCertificate);
   const managerName = trim(data.managerName);
   const managerDepartment = trim(data.managerDepartment);
   const managerPhone = trim(data.managerPhone);
@@ -758,6 +773,7 @@ function mapFormDataToPayload(data = {}) {
     projectName,
     projectCode,
     strategicFlag,
+    strategicExpertCertificate,
     managerName,
     managerDepartment,
     managerPhone,
@@ -1003,6 +1019,13 @@ function openNewDialog() {
   const strategicOptions = strategicGroup
     ? $$('input[type="checkbox"][data-strategic-option]', strategicGroup)
     : [];
+  const expertSearchContainer = form.querySelector('[data-expert-search]');
+  const expertKeywordInput = expertSearchContainer?.querySelector('[data-expert-input]');
+  const expertSearchButton = expertSearchContainer?.querySelector('[data-expert-search-btn]');
+  const expertResultsList = expertSearchContainer?.querySelector('[data-expert-results]');
+  const expertSelectedName = expertSearchContainer?.querySelector('[data-expert-selected-name]');
+  const expertSelectedValueInput = expertSearchContainer?.querySelector('[data-expert-selected-value]');
+  const expertClearButton = expertSearchContainer?.querySelector('[data-expert-clear]');
   const countrySelectContainer = form.querySelector("[data-country-select]");
   const simpleCountrySelects = $$('[data-country-select-simple]', form);
   const notifyCheckbox = form.querySelector('[data-notify-copy]');
@@ -1047,6 +1070,17 @@ function openNewDialog() {
         if ((hidden.value ?? "").trim() === "") {
           return false;
         }
+      }
+    }
+
+    if (expertSearchContainer && stepEl.contains(expertSearchContainer)) {
+      const requiresExpert = (strategicValueInput?.value || "") === "전략물자 수출";
+      const selectedValue =
+        expertSelectedValueInput instanceof HTMLInputElement
+          ? (expertSelectedValueInput.value || "").trim()
+          : "";
+      if (requiresExpert && !selectedValue) {
+        return false;
       }
     }
 
@@ -1112,6 +1146,204 @@ function openNewDialog() {
     updateStepActionState();
   };
 
+  const setupExpertSearch = () => {
+    if (!expertSearchContainer) return;
+
+    const state =
+      expertSearchContainer._expertState || {
+        enabled: false,
+        results: [],
+        selected: null,
+      };
+    expertSearchContainer._expertState = state;
+
+    const updateSelectionDisplay = () => {
+      const hasSelection = Boolean(state.selected);
+      if (expertSelectedName instanceof HTMLElement) {
+        expertSelectedName.textContent = hasSelection ? state.selected.name : "없음";
+      }
+      if (expertSelectedValueInput instanceof HTMLInputElement) {
+        expertSelectedValueInput.value = hasSelection ? state.selected.name : "";
+      }
+      if (expertClearButton instanceof HTMLButtonElement) {
+        expertClearButton.hidden = !hasSelection;
+      }
+      expertSearchContainer.dataset.selected = hasSelection ? "true" : "false";
+    };
+
+    const clearSelection = ({ silent } = {}) => {
+      state.selected = null;
+      updateSelectionDisplay();
+      if (!silent) {
+        updateStepActionState();
+      }
+    };
+
+    const selectCertificate = (certificate, { silent } = {}) => {
+      if (!certificate) return;
+      state.selected = certificate;
+      updateSelectionDisplay();
+      if (expertResultsList instanceof HTMLElement) {
+        expertResultsList.hidden = true;
+      }
+      if (!silent) {
+        updateStepActionState();
+      }
+    };
+
+    const updateSearchButtonState = () => {
+      if (!(expertSearchButton instanceof HTMLButtonElement)) return;
+      const keyword = (expertKeywordInput instanceof HTMLInputElement ? expertKeywordInput.value : "").trim();
+      expertSearchButton.disabled = !state.enabled || keyword.length === 0;
+    };
+
+    const showMessage = (message) => {
+      if (!(expertResultsList instanceof HTMLElement)) return;
+      if (!state.enabled) {
+        expertResultsList.innerHTML = "";
+        expertResultsList.hidden = true;
+        return;
+      }
+      expertResultsList.innerHTML = `
+        <li class="expert-search-empty" role="option" aria-disabled="true">${escapeHtml(message)}</li>
+      `;
+      expertResultsList.hidden = false;
+      state.results = [];
+    };
+
+    const renderResults = (items) => {
+      if (!(expertResultsList instanceof HTMLElement)) return;
+      if (!state.enabled) {
+        expertResultsList.innerHTML = "";
+        expertResultsList.hidden = true;
+        return;
+      }
+      state.results = items;
+      if (!items.length) {
+        showMessage("검색 결과가 없습니다.");
+        return;
+      }
+      expertResultsList.innerHTML = items
+        .map(
+          (item) => `
+            <li>
+              <button type="button" class="expert-search-option" role="option" data-expert-option data-expert-id="${escapeHtml(
+                item.id
+              )}">
+                <span class="expert-search-option-name">${escapeHtml(item.name)}</span>
+                <span class="expert-search-option-desc">${escapeHtml(item.description)}</span>
+              </button>
+            </li>
+          `
+        )
+        .join("");
+      expertResultsList.hidden = false;
+    };
+
+    const handleSearch = () => {
+      if (!state.enabled) return;
+      const keyword = (expertKeywordInput instanceof HTMLInputElement ? expertKeywordInput.value : "").trim().toLowerCase();
+      if (!keyword) {
+        showMessage("검색어를 입력해주세요.");
+        return;
+      }
+      const results = EXPERT_CERTIFICATES.filter((item) => item.searchValue.includes(keyword));
+      if (!results.length) {
+        showMessage("검색 결과가 없습니다.");
+        return;
+      }
+      renderResults(results);
+    };
+
+    const setEnabled = (enabled) => {
+      const nextEnabled = Boolean(enabled);
+      expertSearchContainer.dataset.enabled = nextEnabled ? "true" : "false";
+      if (state.enabled === nextEnabled) {
+        updateSearchButtonState();
+        if (!nextEnabled && expertResultsList instanceof HTMLElement) {
+          expertResultsList.hidden = true;
+        }
+        return;
+      }
+      state.enabled = nextEnabled;
+      if (expertKeywordInput instanceof HTMLInputElement) {
+        expertKeywordInput.disabled = !state.enabled;
+        if (!state.enabled) {
+          expertKeywordInput.value = "";
+        }
+      }
+      if (expertSearchButton instanceof HTMLButtonElement) {
+        expertSearchButton.disabled = !state.enabled;
+      }
+      if (!state.enabled) {
+        if (expertResultsList instanceof HTMLElement) {
+          expertResultsList.innerHTML = "";
+          expertResultsList.hidden = true;
+        }
+        clearSelection({ silent: true });
+      }
+      updateSearchButtonState();
+      updateStepActionState();
+    };
+
+    state.clearSelection = clearSelection;
+    state.setEnabled = setEnabled;
+    state.selectCertificate = selectCertificate;
+    state.updateSearchButtonState = updateSearchButtonState;
+
+    if (!expertSearchContainer.dataset.boundExpert) {
+      if (expertKeywordInput instanceof HTMLInputElement) {
+        expertKeywordInput.addEventListener("input", () => {
+          updateSearchButtonState();
+        });
+        expertKeywordInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            handleSearch();
+          }
+        });
+      }
+      if (expertSearchButton instanceof HTMLButtonElement) {
+        expertSearchButton.addEventListener("click", handleSearch);
+      }
+      if (expertResultsList instanceof HTMLElement) {
+        expertResultsList.addEventListener("click", (event) => {
+          const option = event.target.closest("[data-expert-option]");
+          if (!(option instanceof HTMLButtonElement)) return;
+          const id = option.dataset.expertId;
+          const certificate = id ? EXPERT_CERTIFICATES.find((item) => item.id === id) : null;
+          if (certificate) {
+            selectCertificate(certificate);
+          }
+        });
+      }
+      if (expertClearButton instanceof HTMLButtonElement) {
+        expertClearButton.addEventListener("click", () => {
+          clearSelection();
+          if (expertKeywordInput instanceof HTMLInputElement) {
+            expertKeywordInput.focus();
+          }
+        });
+      }
+      expertSearchContainer.dataset.boundExpert = "true";
+    }
+
+    setEnabled(false);
+    clearSelection({ silent: true });
+    updateSearchButtonState();
+  };
+
+  const syncStrategicDependencies = ({ silent } = {}) => {
+    const value = strategicValueInput?.value?.trim() || "";
+    const expertState = expertSearchContainer?._expertState;
+    const isStrategic = value === "전략물자 수출";
+    if (expertState?.setEnabled) {
+      expertState.setEnabled(isStrategic);
+    } else if (!silent) {
+      updateStepActionState();
+    }
+  };
+
   const handleStrategicOptionChange = (input) => {
     if (!(input instanceof HTMLInputElement)) return;
     if (input.checked) {
@@ -1127,6 +1359,7 @@ function openNewDialog() {
         strategicValueInput.value = selected ? selected.value : "";
       }
     }
+    syncStrategicDependencies({ silent: true });
     updateStepActionState();
   };
 
@@ -1144,6 +1377,18 @@ function openNewDialog() {
         option.dataset.boundStrategic = "true";
       }
     });
+    if (!form.dataset.boundStrategicReset) {
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          if (strategicValueInput) {
+            strategicValueInput.value = "";
+          }
+          syncStrategicDependencies({ silent: true });
+        });
+      });
+      form.dataset.boundStrategicReset = "true";
+    }
+    syncStrategicDependencies({ silent: true });
   };
 
   const setupCountrySelector = () => {
@@ -1602,6 +1847,12 @@ function openNewDialog() {
       state.rowIdCounter = 0;
     }
 
+    const itemSummaryContainer = itemsStep.querySelector('[data-item-summary]');
+    const itemQtySumEl = itemsStep.querySelector('[data-item-qty-sum]');
+    const itemTotalSumEl = itemsStep.querySelector('[data-item-total-sum]');
+    const qtyFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
+    const amountFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+
     const assignRowKey = (row) => {
       if (!row) return;
       if (!row.dataset.itemKey) {
@@ -1616,7 +1867,7 @@ function openNewDialog() {
       assignRowKey(row);
       row.innerHTML = `
         <td><input type="checkbox" data-item-select /></td>
-        <td><input type="number" name="itemNo" data-item-input required min="1" step="1" placeholder="예: 1" /></td>
+        <td><input type="number" name="itemNo" data-item-input data-item-no required readonly tabindex="-1" aria-readonly="true" /></td>
         <td><input type="text" name="itemName" data-item-input required placeholder="예: 품명" /></td>
         <td><input type="text" name="itemCategory" data-item-input required placeholder="예: 품목구분" /></td>
         <td><input type="number" name="itemQuantity" data-item-input required min="0" step="1" placeholder="예: 10" /></td>
@@ -1662,15 +1913,40 @@ function openNewDialog() {
         originSelect.dataset.boundOrigin = "true";
       }
 
+      if (!originSelect.value) {
+        originSelect.selectedIndex = 0;
+      }
       syncOriginField();
+    };
+
+    const updateItemSummary = () => {
+      if (!(itemQtySumEl instanceof HTMLElement) || !(itemTotalSumEl instanceof HTMLElement)) return;
+      const rows = $$('[data-item-row]', itemRows);
+      let quantitySum = 0;
+      let amountSum = 0;
+      rows.forEach((row) => {
+        const qtyInput = row.querySelector('input[name="itemQuantity"]');
+        const totalInput = row.querySelector('input[name="itemTotal"]');
+        const qtyValue = qtyInput instanceof HTMLInputElement ? Number(qtyInput.value) : NaN;
+        const totalValue = totalInput instanceof HTMLInputElement ? Number(totalInput.value) : NaN;
+        if (Number.isFinite(qtyValue)) {
+          quantitySum += qtyValue;
+        }
+        if (Number.isFinite(totalValue)) {
+          amountSum += totalValue;
+        }
+      });
+      itemQtySumEl.textContent = qtyFormatter.format(quantitySum);
+      itemTotalSumEl.textContent = amountFormatter.format(amountSum);
+      if (itemSummaryContainer instanceof HTMLElement) {
+        itemSummaryContainer.dataset.empty = rows.length ? "false" : "true";
+      }
     };
 
     const updateRowNumbers = () => {
       const numberInputs = $$('input[name="itemNo"]', itemRows);
       numberInputs.forEach((input, idx) => {
-        if (!input.value) {
-          input.value = String(idx + 1);
-        }
+        input.value = String(idx + 1);
       });
     };
 
@@ -1679,6 +1955,7 @@ function openNewDialog() {
       itemRows.appendChild(row);
       setupOriginField(row);
       updateRowNumbers();
+      updateItemSummary();
       updateStepActionState();
     };
 
@@ -1699,6 +1976,7 @@ function openNewDialog() {
         addRow();
       } else {
         updateRowNumbers();
+        updateItemSummary();
         updateStepActionState();
       }
     };
@@ -1710,11 +1988,16 @@ function openNewDialog() {
       removeItemButton?.addEventListener("click", () => {
         removeSelectedRows();
       });
-      itemRows.addEventListener("input", () => updateStepActionState());
-      itemRows.addEventListener("change", () => updateStepActionState());
+      const handleItemChange = () => {
+        updateItemSummary();
+        updateStepActionState();
+      };
+      itemRows.addEventListener("input", handleItemChange);
+      itemRows.addEventListener("change", handleItemChange);
       form.addEventListener("reset", () => {
         window.requestAnimationFrame(() => {
           resetRows();
+          updateItemSummary();
           updateStepActionState();
         });
       });
@@ -1733,8 +2016,10 @@ function openNewDialog() {
         setupOriginField(row);
       });
       updateRowNumbers();
+      updateItemSummary();
       updateStepActionState();
     }
+    updateItemSummary();
   };
 
   const setupPackingStep = () => {
@@ -2137,6 +2422,20 @@ function openNewDialog() {
         }
       }
     }
+    if (expertSearchContainer && stepEl.contains(expertSearchContainer)) {
+      const requiresExpert = (strategicValueInput?.value || "") === "전략물자 수출";
+      const selectedValue =
+        expertSelectedValueInput instanceof HTMLInputElement
+          ? (expertSelectedValueInput.value || "").trim()
+          : "";
+      if (requiresExpert && !selectedValue) {
+        alert("전략물자 전문판정서를 선택해주세요.");
+        if (expertKeywordInput instanceof HTMLInputElement) {
+          expertKeywordInput.focus();
+        }
+        return false;
+      }
+    }
     const inputs = $$("input, select, textarea", stepEl);
     for (const input of inputs) {
       if (input.disabled) continue;
@@ -2225,6 +2524,7 @@ function openNewDialog() {
     exportTypeSelect.dataset.boundDetail = "true";
   }
 
+  setupExpertSearch();
   setupStrategicGroup();
   setupCountrySelector();
   setupSimpleCountrySelects();
