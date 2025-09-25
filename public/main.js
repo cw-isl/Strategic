@@ -2067,6 +2067,13 @@ function openNewDialog() {
       cbm: packingStep.querySelector('[data-packing-field="cbm"]'),
     };
 
+    if (panel instanceof HTMLElement) {
+      panel.hidden = !state.formOpen;
+    }
+    if (openButton instanceof HTMLButtonElement) {
+      openButton.hidden = !!state.formOpen;
+    }
+
     const ensureDefaultName = () => {
       if (!(inputs.name instanceof HTMLInputElement)) return;
       if ((inputs.name.value ?? '').trim() === '') {
@@ -2245,6 +2252,13 @@ function openNewDialog() {
     };
 
     const openForm = ({ focusInput = true } = {}) => {
+      if (state.formOpen) {
+        if (focusInput && inputs.name instanceof HTMLInputElement) {
+          inputs.name.focus();
+          inputs.name.select();
+        }
+        return;
+      }
       state.formOpen = true;
       if (panel instanceof HTMLElement) {
         panel.hidden = false;
@@ -2385,17 +2399,20 @@ function openNewDialog() {
         createButton.addEventListener('click', handleCreate);
       }
       if (openButton instanceof HTMLButtonElement) {
-        openButton.addEventListener('click', () => {
+        openButton.addEventListener('click', (event) => {
+          event.preventDefault();
           openForm();
         });
       }
-      if (closeButton instanceof HTMLButtonElement) {
-        closeButton.addEventListener('click', () => {
+      if (closeButton) {
+        closeButton.addEventListener('click', (event) => {
+          event.preventDefault();
           closeForm({ focusTrigger: true });
         });
       }
-      if (cancelButton instanceof HTMLButtonElement) {
-        cancelButton.addEventListener('click', () => {
+      if (cancelButton) {
+        cancelButton.addEventListener('click', (event) => {
+          event.preventDefault();
           state.selection.clear();
           renderItemTable();
           closeForm({ resetFields: true, focusTrigger: true });
