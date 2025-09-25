@@ -11,20 +11,18 @@
   <!-- 상단 탑바 -->
   <header class="topbar" role="navigation" aria-label="상단 내비게이션">
     <div class="topbar-inner">
-      <a class="tab" href="/" data-link data-top="home" aria-current="page">HOME</a>
       <div class="menu" data-menu>
         <button class="tab menu-toggle" type="button" data-menu-button aria-haspopup="true" aria-expanded="false" aria-controls="top-menu-panel">
           수출 및 전략물자
         </button>
         <div class="menu-panel" id="top-menu-panel" role="menu" hidden>
-          <a class="menu-item" href="/export" data-link role="menuitem">수출현황<span class="arrow" aria-hidden="true">▶</span></a>
-          <a class="menu-item" href="/strategic-check" data-link role="menuitem">전략물자 여부 체크<span class="arrow" aria-hidden="true">▶</span></a>
-          <a class="menu-item" href="/expert-certificate" data-link role="menuitem">전략물자 전문판정서<span class="arrow" aria-hidden="true">▶</span></a>
-          <a class="menu-item" href="/regulation" data-link role="menuitem">수출관리규정<span class="arrow" aria-hidden="true">▶</span></a>
-          <a class="menu-item" href="/settings" data-link role="menuitem">설정<span class="arrow" aria-hidden="true">▶</span></a>
+          <a class="menu-item" href="/dashboard" data-link role="menuitem">Dashboard</a>
+          <a class="menu-item" href="/export" data-link role="menuitem">수출현황</a>
+          <a class="menu-item" href="/expert-certificate" data-link role="menuitem">전략물자 전문판정서</a>
+          <a class="menu-item" href="/regulation" data-link role="menuitem">수출관리규정</a>
+          <a class="menu-item" href="/settings" data-link role="menuitem">설정</a>
         </div>
       </div>
-      <div class="spacer"></div>
     </div>
   </header>
 
@@ -75,6 +73,24 @@
               <label><input type="checkbox" value="일반수출" data-strategic-option /> 일반수출</label>
               <input type="hidden" name="strategicFlag" data-strategic-value />
             </fieldset>
+            <div class="expert-search" data-expert-search data-span="full">
+              <label>전략물자 전문판정 검색
+                <div class="expert-search-fields">
+                  <input type="search" placeholder="전문판정 키워드를 입력하세요" data-expert-input disabled aria-label="전략물자 전문판정 검색어" />
+                  <button type="button" class="btn" data-expert-search-btn disabled>검색</button>
+                </div>
+              </label>
+              <ul class="expert-search-results" data-expert-results hidden role="listbox" aria-label="전략물자 전문판정 검색 결과"></ul>
+              <div class="expert-search-selection" data-expert-selection>
+                <span>선택된 전문판정서</span>
+                <strong data-expert-selected-name>없음</strong>
+                <button type="button" class="btn link" data-expert-clear hidden>선택 해제</button>
+              </div>
+              <p class="expert-search-helper" data-expert-helper>
+                전략물자 수출을 선택하면 전문판정서를 검색 후 선택해야 다음 단계로 진행할 수 있습니다.
+              </p>
+              <input type="hidden" name="strategicExpertCertificate" data-expert-selected-value />
+            </div>
           </div>
         </section>
         <section class="step" data-step="2" data-step-title="담당자 정보">
@@ -222,6 +238,10 @@
               </thead>
               <tbody data-item-rows></tbody>
             </table>
+            <div class="item-summary" data-item-summary>
+              <div>총 수량 <strong data-item-qty-sum>0</strong></div>
+              <div>총액 <strong data-item-total-sum>0</strong></div>
+            </div>
           </div>
         </section>
         <section class="step" data-step="12" data-step-title="팩킹리스트" data-packing-step>
