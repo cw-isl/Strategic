@@ -1002,6 +1002,8 @@ function openNewDialog() {
   const steps = $$(".step", form);
   const totalSteps = steps.length;
   let currentStep = 0;
+  const packingStepIndex = steps.findIndex((step) => step.hasAttribute("data-packing-step"));
+  let syncPackingVisibility = null;
 
   const stepIndicator = $("#newExportStep");
   const stepTitle = $("#newExportSection");
@@ -2067,13 +2069,6 @@ function openNewDialog() {
       cbm: packingStep.querySelector('[data-packing-field="cbm"]'),
     };
 
-    if (panel instanceof HTMLElement) {
-      panel.hidden = !state.formOpen;
-    }
-    if (openButton instanceof HTMLButtonElement) {
-      openButton.hidden = !!state.formOpen;
-    }
-
     const ensureDefaultName = () => {
       if (!(inputs.name instanceof HTMLInputElement)) return;
       if ((inputs.name.value ?? '').trim() === '') {
@@ -2300,6 +2295,20 @@ function openNewDialog() {
       }
     };
 
+    const applyVisibility = (isActive) => {
+      packingStep.dataset.packingVisible = isActive ? 'true' : 'false';
+      if (isActive) {
+        syncFormVisibility();
+      } else {
+        if (panel instanceof HTMLElement) {
+          panel.hidden = true;
+        }
+        if (openButton instanceof HTMLButtonElement) {
+          openButton.hidden = false;
+        }
+      }
+    };
+
     const handleCreate = () => {
       if (!(inputs.name instanceof HTMLInputElement)) return;
       const name = inputs.name.value.trim();
@@ -2456,11 +2465,16 @@ function openNewDialog() {
     state.openForm = (options) => openForm(options || {});
     state.closeForm = (options) => closeForm(options || {});
 
-    syncFormVisibility();
     renderItemTable();
     ensureDefaultName();
     renderPackings();
     updateStepActionState();
+
+    syncPackingVisibility = (isActive) => {
+      applyVisibility(isActive);
+    };
+
+    applyVisibility(currentStep === packingStepIndex);
   };
 
   const showStep = (index) => {
@@ -2478,6 +2492,9 @@ function openNewDialog() {
     if (stepTitle) {
       const active = steps[currentStep];
       stepTitle.textContent = active?.dataset.stepTitle ?? "";
+    }
+    if (typeof syncPackingVisibility === "function" && packingStepIndex !== -1) {
+      syncPackingVisibility(currentStep === packingStepIndex);
     }
     updateStepActionState();
   };
