@@ -2036,6 +2036,9 @@ function openNewDialog() {
     if (!Array.isArray(state.items)) {
       state.items = [];
     }
+    if (typeof state.formOpen !== 'boolean') {
+      state.formOpen = false;
+    }
     form._packingState = state;
 
     const dimensionFormatter = new Intl.NumberFormat('ko-KR', {
@@ -2052,6 +2055,10 @@ function openNewDialog() {
     const packingItemsBody = packingStep.querySelector('[data-packing-items-body]');
     const selectAllCheckbox = packingStep.querySelector('[data-packing-select-all]');
     const createButton = packingStep.querySelector('[data-packing-create]');
+    const openButton = packingStep.querySelector('[data-packing-open]');
+    const panel = packingStep.querySelector('[data-packing-panel]');
+    const closeButton = packingStep.querySelector('[data-packing-close]');
+    const cancelButton = packingStep.querySelector('[data-packing-cancel]');
     const inputs = {
       name: packingStep.querySelector('[data-packing-field="name"]'),
       length: packingStep.querySelector('[data-packing-field="length"]'),
@@ -2237,6 +2244,48 @@ function openNewDialog() {
       }
     };
 
+    const openForm = ({ focusInput = true } = {}) => {
+      state.formOpen = true;
+      if (panel instanceof HTMLElement) {
+        panel.hidden = false;
+      }
+      if (openButton instanceof HTMLButtonElement) {
+        openButton.hidden = true;
+      }
+      ensureDefaultName();
+      if (focusInput && inputs.name instanceof HTMLInputElement) {
+        inputs.name.focus();
+        inputs.name.select();
+      }
+    };
+
+    const closeForm = ({ resetFields = false, focusTrigger = false } = {}) => {
+      state.formOpen = false;
+      if (panel instanceof HTMLElement) {
+        panel.hidden = true;
+      }
+      if (openButton instanceof HTMLButtonElement) {
+        openButton.hidden = false;
+        if (focusTrigger) {
+          window.requestAnimationFrame(() => openButton.focus());
+        }
+      }
+      if (resetFields) {
+        if (inputs.name instanceof HTMLInputElement) {
+          inputs.name.value = '';
+        }
+        resetDimensionFields();
+      }
+    };
+
+    const syncFormVisibility = () => {
+      if (state.formOpen) {
+        openForm({ focusInput: false });
+      } else {
+        closeForm({ resetFields: false, focusTrigger: false });
+      }
+    };
+
     const handleCreate = () => {
       if (!(inputs.name instanceof HTMLInputElement)) return;
       const name = inputs.name.value.trim();
@@ -2335,6 +2384,23 @@ function openNewDialog() {
       if (createButton instanceof HTMLButtonElement) {
         createButton.addEventListener('click', handleCreate);
       }
+      if (openButton instanceof HTMLButtonElement) {
+        openButton.addEventListener('click', () => {
+          openForm();
+        });
+      }
+      if (closeButton instanceof HTMLButtonElement) {
+        closeButton.addEventListener('click', () => {
+          closeForm({ focusTrigger: true });
+        });
+      }
+      if (cancelButton instanceof HTMLButtonElement) {
+        cancelButton.addEventListener('click', () => {
+          state.selection.clear();
+          renderItemTable();
+          closeForm({ resetFields: true, focusTrigger: true });
+        });
+      }
       if (packingList instanceof HTMLElement) {
         packingList.addEventListener('click', (event) => {
           const button = event.target.closest('[data-packing-delete]');
@@ -2360,7 +2426,7 @@ function openNewDialog() {
           state.packings = [];
           state.selection = new Set();
           state.items = [];
-          resetDimensionFields();
+          closeForm({ resetFields: true });
           renderItemTable();
           renderPackings();
           ensureDefaultName();
@@ -2370,6 +2436,10 @@ function openNewDialog() {
       state.bound = true;
     }
 
+    state.openForm = (options) => openForm(options || {});
+    state.closeForm = (options) => closeForm(options || {});
+
+    syncFormVisibility();
     renderItemTable();
     ensureDefaultName();
     renderPackings();
@@ -2448,6 +2518,9 @@ function openNewDialog() {
       const packingState = form._packingState;
       if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
         alert("최소 한 개 이상의 팩킹을 생성해주세요.");
+        if (packingState && typeof packingState.openForm === 'function') {
+          packingState.openForm({ focusInput: false });
+        }
         const target = stepEl.querySelector('[data-packing-create]');
         if (target instanceof HTMLElement) {
           target.focus();
@@ -2459,6 +2532,9 @@ function openNewDialog() {
       );
       if (invalidPacking) {
         alert("각 팩킹에 포함할 품목을 선택해주세요.");
+        if (packingState && typeof packingState.openForm === 'function') {
+          packingState.openForm({ focusInput: false });
+        }
         const target = stepEl.querySelector('[data-packing-create]');
         if (target instanceof HTMLElement) {
           target.focus();
