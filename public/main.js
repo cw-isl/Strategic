@@ -9,6 +9,10 @@ const EXPORT_TABLE_COLSPAN = 22;
 let currentPage = 1;
 let currentQuery = "";
 let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
+let lastServerMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
+let lastFetchedItems = [];
+const draftEntries = [];
+let draftSeq = -1;
 
 const menuContainer = $("[data-menu]");
 const menuButton = menuContainer?.querySelector("[data-menu-button]");
@@ -303,13 +307,16 @@ async function fetchAndRender({ page, query } = {}) {
     const pageFromServer = totalPages === 0 ? 1 : Number(data.page ?? 1);
 
     currentPage = pageFromServer;
-    lastMeta = {
+    lastServerMeta = {
       totalPages,
       totalCount: Number(data.totalCount ?? 0),
       pageSize: Number(data.pageSize ?? PAGE_SIZE),
     };
+    lastFetchedItems = data.items ?? [];
 
-    renderRows(data.items ?? [], { page: currentPage });
+    const combinedRows = getCombinedRows(lastFetchedItems, { page: currentPage });
+    renderRows(combinedRows, { page: currentPage });
+    updateMeta();
     renderPagination();
 
     const searchInput = $("#q");
@@ -346,6 +353,11 @@ function renderRows(rows = [], meta = {}) {
 
   const qtyFormatter = new Intl.NumberFormat("ko-KR");
 
+  const docValue = (value) => {
+    if (value === undefined || value === null || value === "") return "-";
+    return escapeHtml(String(value));
+  };
+
   tbody.innerHTML = rows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
@@ -362,10 +374,18 @@ function renderRows(rows = [], meta = {}) {
       const manager = row.manager ? escapeHtml(String(row.manager)) : "-";
       const status = row.status ? escapeHtml(String(row.status)) : "-";
       const note = row.note ? escapeHtml(String(row.note)) : "-";
+      const plStatus = docValue(row.plStatus);
+      const invoiceStatus = docValue(row.invoiceStatus);
+      const permitStatus = docValue(row.permitStatus);
+      const declarationStatus = docValue(row.declarationStatus);
+      const usageStatus = docValue(row.usageStatus);
+      const blStatus = docValue(row.blStatus);
+      const fileNote = docValue(row.fileNote);
       const selectBox = "<input type='checkbox' disabled aria-label='선택' />";
+      const rowAttrs = row.isDraft ? " data-draft=\"true\"" : "";
 
       return `
-        <tr>
+        <tr${rowAttrs}>
           ${td(String(seq), { align: "center" })}
           ${td(shipmentType, { empty: shipmentType === "-" })}
           ${td(createdDate, { empty: createdDate === "-" })}
@@ -379,19 +399,155 @@ function renderRows(rows = [], meta = {}) {
           ${td(department, { align: "left", empty: department === "-" })}
           ${td(manager, { align: "left", empty: manager === "-" })}
           ${td(selectBox, { align: "center" })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
-          ${td("-", { empty: true })}
+          ${td(plStatus, { empty: plStatus === "-" })}
+          ${td(invoiceStatus, { empty: invoiceStatus === "-" })}
+          ${td(permitStatus, { empty: permitStatus === "-" })}
+          ${td(declarationStatus, { empty: declarationStatus === "-" })}
+          ${td(usageStatus, { empty: usageStatus === "-" })}
+          ${td(blStatus, { empty: blStatus === "-" })}
+          ${td(fileNote, { align: "left", empty: fileNote === "-" })}
           ${td(status, { align: "left", empty: status === "-" })}
           ${td(note, { align: "left", empty: note === "-" })}
         </tr>
       `;
     })
     .join("");
+}
+
+function getCombinedRows(serverRows = [], { page } = {}) {
+  const targetPage = page ?? currentPage;
+  if (targetPage === 1) {
+    return [...draftEntries, ...serverRows];
+  }
+  return serverRows;
+}
+
+function updateMeta() {
+  const serverTotal = lastServerMeta.totalCount ?? 0;
+  const totalCount = serverTotal + draftEntries.length;
+  const serverPages = lastServerMeta.totalPages ?? 0;
+  let totalPages = serverPages;
+  if (totalCount === 0) {
+    totalPages = 0;
+  } else if (totalPages === 0) {
+    totalPages = 1;
+  }
+  lastMeta = {
+    totalPages,
+    totalCount,
+    pageSize: lastServerMeta.pageSize ?? PAGE_SIZE,
+  };
+}
+
+function refreshAfterDraftChange() {
+  updateMeta();
+  const rows = getCombinedRows(lastFetchedItems, { page: currentPage });
+  renderRows(rows, { page: currentPage });
+  renderPagination();
+}
+
+function collectFormValues(form) {
+  const data = {};
+  const fd = new FormData(form);
+  fd.forEach((value, key) => {
+    if (typeof value === "string") {
+      data[key] = value.trim();
+    } else {
+      data[key] = value;
+    }
+  });
+  return data;
+}
+
+function mapFormDataToPayload(data = {}) {
+  const trim = (val) => (typeof val === "string" ? val.trim() : "");
+  const qtyValue = Number(data.qty ?? 0);
+  const priceValue = Number(data.unitPrice ?? 0);
+  const payload = {
+    item: trim(data.item),
+    qty: Number.isFinite(qtyValue) ? Math.max(0, Math.floor(qtyValue)) : 0,
+    unitPrice: Number.isFinite(priceValue) ? Math.max(0, priceValue) : 0,
+    country: trim(data.country),
+    status: trim(data.status) || "대기",
+    shipmentType: trim(data.shipmentType),
+    shipmentDate: data.shipmentDate || "",
+    shipmentPurpose: trim(data.shipmentPurpose),
+    projectName: trim(data.projectName),
+    projectCode: trim(data.projectCode),
+    contractNumber: trim(data.contractNumber),
+    itemSpec: trim(data.itemSpec),
+    unit: trim(data.unit),
+    client: trim(data.client),
+    clientCountry: trim(data.clientCountry),
+    clientManager: trim(data.clientManager),
+    endUser: trim(data.endUser),
+    endUserCountry: trim(data.endUserCountry),
+    endUse: trim(data.endUse),
+    transportMode: trim(data.transportMode),
+    departureDate: data.departureDate || "",
+    department: trim(data.department),
+    manager: trim(data.manager),
+    managerEmail: trim(data.managerEmail),
+    strategicFlag: trim(data.strategicFlag),
+    strategicCategory: trim(data.strategicCategory),
+    strategicBasis: trim(data.strategicBasis),
+    permitType: trim(data.permitType),
+    permitNumber: trim(data.permitNumber),
+    declarationNumber: trim(data.declarationNumber),
+    plStatus: trim(data.plStatus || "미등록"),
+    invoiceStatus: trim(data.invoiceStatus || "미등록"),
+    permitStatus: trim(data.permitStatus || "미등록"),
+    declarationStatus: trim(data.declarationStatus || "미등록"),
+    usageStatus: trim(data.usageStatus || "미등록"),
+    blStatus: trim(data.blStatus || "미등록"),
+    fileNote: trim(data.fileNote),
+    note: trim(data.note),
+    companyName: trim(data.companyName),
+    businessNumber: trim(data.businessNumber),
+    contactName: trim(data.contactName),
+    contactPhone: trim(data.contactPhone),
+  };
+  return payload;
+}
+
+function mapFormDataToRow(data = {}, { draft = false } = {}) {
+  const payload = mapFormDataToPayload(data);
+  const row = {
+    ...payload,
+    createdAt: Date.now(),
+    qty: payload.qty,
+    unitPrice: payload.unitPrice,
+    status: draft ? "임시저장" : payload.status,
+    note: payload.note || (draft ? "임시 저장" : ""),
+    isDraft: draft,
+  };
+  row.country = payload.country ? payload.country.toUpperCase() : "";
+  return row;
+}
+
+function addDraftEntry(data) {
+  const row = mapFormDataToRow(data, { draft: true });
+  row.id = `D${Date.now()}_${Math.abs(draftSeq--)}`;
+  draftEntries.unshift(row);
+  refreshAfterDraftChange();
+}
+
+function formHasInput(form) {
+  const elements = Array.from(form.elements || []);
+  return elements.some((el) => {
+    if (!el || !el.name) return false;
+    if (el.type === "button" || el.type === "submit" || el.type === "reset" || el.type === "hidden") return false;
+    if (el instanceof HTMLInputElement) {
+      if (el.type === "checkbox" || el.type === "radio") {
+        return el.checked;
+      }
+      return el.value.trim() !== "";
+    }
+    if (el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement) {
+      return (el.value || "").trim() !== "";
+    }
+    return false;
+  });
 }
 
 function renderPagination() {
@@ -483,45 +639,126 @@ function td(content, { align, empty = false } = {}) {
 function openNewDialog() {
   const dialog = $("#newExportDialog");
   const form = $("#newExportForm");
-  form.reset();
-  dialog.showModal();
+  if (!dialog || !form) return;
 
+  form.reset();
+
+  const steps = $$(".step", form);
+  const totalSteps = steps.length;
+  let currentStep = 0;
+
+  const stepIndicator = $("#newExportStep");
+  const stepTitle = $("#newExportSection");
+  const nextButton = form.querySelector("[data-step-next]");
+  const saveButton = form.querySelector("[data-step-save]");
+  const completeButton = form.querySelector("[data-step-complete]");
   const cancelButton = form.querySelector("[data-dialog-cancel]");
+
+  const showStep = (index) => {
+    currentStep = Math.max(0, Math.min(index, totalSteps - 1));
+    steps.forEach((stepEl, idx) => {
+      if (idx === currentStep) {
+        stepEl.removeAttribute("hidden");
+      } else {
+        stepEl.setAttribute("hidden", "true");
+      }
+    });
+    if (stepIndicator) {
+      stepIndicator.textContent = `${currentStep + 1} / ${totalSteps}`;
+    }
+    if (stepTitle) {
+      const active = steps[currentStep];
+      stepTitle.textContent = active?.dataset.stepTitle ?? "";
+    }
+    if (nextButton) {
+      nextButton.disabled = currentStep >= totalSteps - 1;
+    }
+    if (completeButton) {
+      completeButton.disabled = currentStep !== totalSteps - 1;
+    }
+  };
+
+  const validateStep = (index) => {
+    const stepEl = steps[index];
+    if (!stepEl) return true;
+    const inputs = $$("input, select, textarea", stepEl);
+    for (const input of inputs) {
+      if (typeof input.reportValidity === "function" && !input.reportValidity()) {
+        input.focus();
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!validateStep(currentStep)) return;
+    if (currentStep < totalSteps - 1) {
+      showStep(currentStep + 1);
+    }
+  };
+
+  const handleSaveDraft = () => {
+    if (!formHasInput(form)) {
+      alert("입력된 내용이 없습니다.");
+      return;
+    }
+    const values = collectFormValues(form);
+    addDraftEntry(values);
+    dialog.close();
+  };
+
+  const handleCancel = () => {
+    const needConfirm = currentStep > 0 || formHasInput(form);
+    if (!needConfirm || window.confirm("정말로 취소하시겠습니까?")) {
+      form.reset();
+      dialog.close();
+    }
+  };
+
+  if (nextButton) {
+    nextButton.onclick = handleNext;
+  }
+  if (saveButton) {
+    saveButton.onclick = handleSaveDraft;
+  }
   if (cancelButton) {
-    cancelButton.addEventListener(
-      "click",
-      () => {
-        form.reset();
-        dialog.close();
-      },
-      { once: true }
-    );
+    cancelButton.onclick = handleCancel;
   }
 
   form.onsubmit = async (e) => {
     e.preventDefault();
-    const fd = new FormData(form);
-    const payload = {
-      item: String(fd.get("item") || "").trim(),
-      qty: Number(fd.get("qty") || 0),
-      unitPrice: Number(fd.get("unitPrice") || 0),
-      country: String(fd.get("country") || "").trim(),
-      status: String(fd.get("status") || "대기"),
-    };
+    if (currentStep !== totalSteps - 1) {
+      if (validateStep(currentStep)) {
+        handleNext();
+      }
+      return;
+    }
+    if (!form.reportValidity()) return;
+
+    const values = collectFormValues(form);
+    const payload = mapFormDataToPayload(values);
+
     try {
       const res = await fetch("/api/exports", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("등록 실패");
+      await res.json();
       dialog.close();
-      // 목록 갱신
-      if (location.pathname === "/export") fetchAndRender();
+      form.reset();
+      if (location.pathname === "/export") {
+        fetchAndRender({ page: 1 });
+      }
     } catch (err) {
       alert(err.message || "등록 중 오류");
     }
   };
+
+  dialog.showModal();
+  showStep(currentStep);
 }
 
 /* Router */

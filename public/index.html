@@ -36,23 +36,177 @@
   <!-- 신규등록 모달 -->
   <dialog id="newExportDialog" aria-labelledby="newExportTitle">
     <form id="newExportForm" method="dialog" class="card">
-      <h3 id="newExportTitle">수출 신규등록</h3>
-      <div class="grid">
-        <label>품목<input name="item" required placeholder="예: 반도체 웨이퍼" /></label>
-        <label>수량<input name="qty" type="number" min="0" step="1" required /></label>
-        <label>단가(USD)<input name="unitPrice" type="number" min="0" step="0.01" required /></label>
-        <label>국가<input name="country" required placeholder="예: KR/US/JP/DE" /></label>
-        <label>상태
-          <select name="status" required>
-            <option value="대기">대기</option>
-            <option value="진행">진행</option>
-            <option value="완료">완료</option>
-          </select>
-        </label>
+      <header class="dialog-header">
+        <h3 id="newExportTitle">수출 신규등록</h3>
+        <p id="newExportStep" class="step-indicator" aria-live="polite">1 / 13</p>
+        <p id="newExportSection" class="step-title">수출업체 기본정보</p>
+      </header>
+      <div class="step-container">
+        <section class="step" data-step="0" data-step-title="수출업체 기본정보">
+          <div class="grid">
+            <label>업체명<input name="companyName" placeholder="예: 한빛테크" /></label>
+            <label>사업자등록번호<input name="businessNumber" placeholder="예: 123-45-67890" /></label>
+            <label>담당자명<input name="contactName" placeholder="예: 홍길동" /></label>
+            <label>담당자 연락처<input name="contactPhone" placeholder="예: 010-1234-5678" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="1" data-step-title="출고 기본정보">
+          <div class="grid">
+            <label>출고유형
+              <select name="shipmentType" required>
+                <option value="">선택</option>
+                <option value="일반수출">일반수출</option>
+                <option value="위탁가공">위탁가공</option>
+                <option value="임시반출">임시반출</option>
+                <option value="타법령">타법령</option>
+              </select>
+            </label>
+            <label>출고일<input name="shipmentDate" type="date" /></label>
+            <label>출고목적
+              <select name="shipmentPurpose">
+                <option value="">선택</option>
+                <option value="상업">상업</option>
+                <option value="연구">연구</option>
+                <option value="A/S">A/S</option>
+              </select>
+            </label>
+          </div>
+        </section>
+        <section class="step" data-step="2" data-step-title="프로젝트 및 계약">
+          <div class="grid">
+            <label>프로젝트명<input name="projectName" placeholder="예: 차세대 반도체" /></label>
+            <label>프로젝트코드<input name="projectCode" placeholder="예: PJT-2024-001" /></label>
+            <label>계약번호<input name="contractNumber" placeholder="예: CNT-24001" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="3" data-step-title="품목 정보">
+          <div class="grid">
+            <label>품목명<input name="item" required placeholder="예: 반도체 웨이퍼" /></label>
+            <label>모델/규격<input name="itemSpec" placeholder="예: 300mm 12"" /></label>
+            <label>HS CODE<input name="hsCode" placeholder="예: 381800" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="4" data-step-title="수량 및 금액">
+          <div class="grid">
+            <label>수량<input name="qty" type="number" min="0" step="1" required /></label>
+            <label>단위<input name="unit" placeholder="EA" /></label>
+            <label>단가(USD)<input name="unitPrice" type="number" min="0" step="0.01" required /></label>
+          </div>
+        </section>
+        <section class="step" data-step="5" data-step-title="거래처 정보">
+          <div class="grid">
+            <label>거래처<input name="client" placeholder="예: 글로벌전자" /></label>
+            <label>거래처 국가<input name="clientCountry" placeholder="예: KR" /></label>
+            <label>거래처 담당자<input name="clientManager" placeholder="예: John Doe" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="6" data-step-title="최종사용자 및 용도">
+          <div class="grid">
+            <label>최종사용자<input name="endUser" placeholder="예: ABC 연구소" /></label>
+            <label>최종사용자 국가<input name="endUserCountry" placeholder="예: US" /></label>
+            <label>최종사용 용도<textarea name="endUse" rows="2" placeholder="예: 연구 및 시험용"></textarea></label>
+          </div>
+        </section>
+        <section class="step" data-step="7" data-step-title="수출국가 및 운송">
+          <div class="grid">
+            <label>수출국가<input name="country" required placeholder="예: US" /></label>
+            <label>운송방법
+              <select name="transportMode">
+                <option value="">선택</option>
+                <option value="항공">항공</option>
+                <option value="해상">해상</option>
+                <option value="특송">특송</option>
+              </select>
+            </label>
+            <label>선적예정일<input name="departureDate" type="date" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="8" data-step-title="내부 담당 정보">
+          <div class="grid">
+            <label>담당부서<input name="department" placeholder="예: 해외영업팀" /></label>
+            <label>담당자<input name="manager" placeholder="예: 김대리" /></label>
+            <label>담당자 이메일<input name="managerEmail" type="email" placeholder="예: export@example.com" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="9" data-step-title="전략물자 판정">
+          <div class="grid">
+            <label>전략물자 여부
+              <select name="strategicFlag">
+                <option value="">선택</option>
+                <option value="해당">해당</option>
+                <option value="비해당">비해당</option>
+              </select>
+            </label>
+            <label>전략물자 분류<input name="strategicCategory" placeholder="예: C-3" /></label>
+            <label>판정 근거<textarea name="strategicBasis" rows="2" placeholder="판정 기준 메모"></textarea></label>
+          </div>
+        </section>
+        <section class="step" data-step="10" data-step-title="허가 및 신고 정보">
+          <div class="grid">
+            <label>허가구분<input name="permitType" placeholder="예: 전략물자 수출허가" /></label>
+            <label>허가번호<input name="permitNumber" placeholder="허가번호" /></label>
+            <label>신고번호<input name="declarationNumber" placeholder="신고번호" /></label>
+          </div>
+        </section>
+        <section class="step" data-step="11" data-step-title="수출증빙 현황">
+          <div class="grid">
+            <label>PL 준비상태
+              <select name="plStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>INVOICE 준비상태
+              <select name="invoiceStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>전략물자 수출허가서
+              <select name="permitStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>수출신고서 상태
+              <select name="declarationStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>최종사용자/용도 확인서
+              <select name="usageStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>B/L 상태
+              <select name="blStatus">
+                <option value="미등록">미등록</option>
+                <option value="등록완료">등록완료</option>
+              </select>
+            </label>
+            <label>파일 메모<textarea name="fileNote" rows="2" placeholder="첨부 파일 메모"></textarea></label>
+          </div>
+        </section>
+        <section class="step" data-step="12" data-step-title="진행상황 및 비고">
+          <div class="grid">
+            <label>진행상황
+              <select name="status" required>
+                <option value="대기">대기</option>
+                <option value="진행">진행</option>
+                <option value="완료">완료</option>
+              </select>
+            </label>
+            <label>비고<textarea name="note" rows="3" placeholder="특이사항 메모"></textarea></label>
+          </div>
+        </section>
       </div>
       <menu class="dialog-actions">
-        <button type="button" data-dialog-cancel>취소</button>
-        <button type="submit" value="confirm" class="primary">등록</button>
+        <button type="button" data-step-next class="btn">다음</button>
+        <button type="button" data-step-save class="btn">임시저장</button>
+        <button type="submit" data-step-complete class="btn primary" disabled>완료</button>
+        <button type="button" data-dialog-cancel class="btn">취소</button>
       </menu>
     </form>
   </dialog>

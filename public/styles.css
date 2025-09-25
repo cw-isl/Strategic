@@ -113,6 +113,8 @@ tbody tr:hover{background:#fafcff}
 .export-table tbody tr td:first-child{font-weight:600;color:#0f1b33}
 .export-table tbody tr:nth-child(odd){background:#fbfdff}
 .export-table tbody tr:hover{background:#f1f5ff}
+.export-table tbody tr[data-draft="true"]{background:#fff5e6}
+.export-table tbody tr[data-draft="true"]:hover{background:#ffeacc}
 
 .export-table td[data-empty="true"]::after{content:""}
 
@@ -145,8 +147,20 @@ dialog{border:none;padding:0}
 dialog::backdrop{background:rgba(0,0,0,.35)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
 label{display:grid;gap:.3rem;font-weight:600}
-input,select{padding:.5rem;border:1px solid var(--line)}
-.dialog-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6px;font:inherit;resize:vertical}
+.step-container{display:flex;flex-direction:column;gap:1.25rem;margin-top:1rem}
+.step{display:block}
+.step[hidden]{display:none}
+.dialog-header{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.5rem}
+.dialog-header h3{margin:0;font-size:1.2rem}
+.step-indicator{margin:0;font-size:.9rem;color:#52608f;font-weight:600}
+.step-title{margin:0;font-size:1.05rem;font-weight:700;color:#1f2a44}
+.dialog-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1.25rem;flex-wrap:wrap}
+.dialog-actions .btn{min-width:110px}
+.dialog-actions .btn.primary{order:3}
+.dialog-actions .btn[data-dialog-cancel]{order:4}
+.dialog-actions .btn[data-step-save]{order:2}
+.dialog-actions .btn[data-step-next]{order:1}
 .primary{background:var(--blue);color:#fff;border-color:#0e2a5b}
 
 /* Footer */
