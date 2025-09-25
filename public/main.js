@@ -152,6 +152,32 @@ const COUNTRY_LIST = COUNTRY_DATA.map((item) => {
   };
 }).sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
 
+const ITEM_CURRENCIES = [
+  { value: "", label: "선택" },
+  { value: "KRW", label: "KRW - 대한민국 원" },
+  { value: "USD", label: "USD - 미 달러" },
+  { value: "EUR", label: "EUR - 유로" },
+  { value: "JPY", label: "JPY - 일본 엔" },
+  { value: "CNY", label: "CNY - 중국 위안" },
+  { value: "HKD", label: "HKD - 홍콩 달러" },
+  { value: "TWD", label: "TWD - 대만 달러" },
+];
+
+const ITEM_CURRENCY_OPTIONS_HTML = ITEM_CURRENCIES.map(
+  (currency) => `
+    <option value="${escapeHtml(currency.value)}">${escapeHtml(currency.label)}</option>
+  `
+).join("");
+
+const ITEM_ORIGIN_OPTIONS_HTML = [
+  '<option value="">선택</option>',
+  ...COUNTRY_LIST.map(
+    (country) =>
+      `<option value="${escapeHtml(country.name)}">${escapeHtml(country.name)} (${escapeHtml(country.english)})</option>`
+  ),
+  '<option value="기타">기타 (직접 입력)</option>',
+].join("");
+
 const menuContainer = $("[data-menu]");
 const menuButton = menuContainer?.querySelector("[data-menu-button]");
 const menuPanel = menuContainer?.querySelector(".menu-panel");
@@ -683,28 +709,44 @@ function mapFormDataToPayload(data = {}) {
   const itemNames = toArray(data.itemName);
   const itemCategories = toArray(data.itemCategory);
   const itemQuantities = toArray(data.itemQuantity);
+  const itemCurrencies = toArray(data.itemCurrency);
   const itemUnitPrices = toArray(data.itemUnitPrice);
   const itemTotals = toArray(data.itemTotal);
   const itemOrigins = toArray(data.itemOrigin);
+  const itemOriginOthers = toArray(data.itemOriginOther);
   const itemCount = Math.max(
     itemNos.length,
     itemNames.length,
     itemCategories.length,
     itemQuantities.length,
+    itemCurrencies.length,
     itemUnitPrices.length,
     itemTotals.length,
     itemOrigins.length,
+    itemOriginOthers.length,
   );
 
-  const items = Array.from({ length: itemCount }, (_, idx) => ({
-    no: itemNos[idx] ?? "",
-    name: itemNames[idx] ?? "",
-    category: itemCategories[idx] ?? "",
-    quantity: itemQuantities[idx] ?? "",
-    unitPrice: itemUnitPrices[idx] ?? "",
-    total: itemTotals[idx] ?? "",
-    origin: itemOrigins[idx] ?? "",
-  })).filter((item) => Object.values(item).some((value) => value !== ""));
+  const items = Array.from({ length: itemCount }, (_, idx) => {
+    const originChoice = itemOrigins[idx] ?? "";
+    const originOtherValue = itemOriginOthers[idx] ?? "";
+    const resolvedOrigin = originChoice === "기타" ? originOtherValue : originChoice;
+    return {
+      no: itemNos[idx] ?? "",
+      name: itemNames[idx] ?? "",
+      category: itemCategories[idx] ?? "",
+      quantity: itemQuantities[idx] ?? "",
+      currency: itemCurrencies[idx] ?? "",
+      unitPrice: itemUnitPrices[idx] ?? "",
+      total: itemTotals[idx] ?? "",
+      origin: resolvedOrigin ?? "",
+    };
+  }).filter((item) => Object.values(item).some((value) => value !== "" && value !== undefined));
+
+  const firstItem = items[0] || {};
+  const firstItemQty = Number(firstItem.quantity);
+  const firstItemUnitPrice = Number(firstItem.unitPrice);
+  const normalizedQty = Number.isFinite(firstItemQty) ? firstItemQty : 0;
+  const normalizedUnitPrice = Number.isFinite(firstItemUnitPrice) ? firstItemUnitPrice : 0;
 
   const resolvedPurpose = exportType === "기타" && exportTypeDetail ? exportTypeDetail : exportType;
   const resolvedTransportMode = transportMode === "기타" && transportOther ? transportOther : transportMode;
@@ -749,6 +791,10 @@ function mapFormDataToPayload(data = {}) {
     incotermsOther: incoterms === "기타" ? incotermsOther : "",
     paymentTerms,
     items,
+    item: firstItem.name || "",
+    qty: normalizedQty,
+    unitPrice: normalizedUnitPrice,
+    currency: firstItem.currency || "",
     requester: {
       name: managerName,
       department: managerDepartment,
@@ -801,7 +847,7 @@ function mapFormDataToPayload(data = {}) {
     clientCountry: importCountry,
     clientManager: importContactName,
     note: importEtc,
-    country: importCountry,
+    country: (importCountry || destinationCountry || firstItem.origin || originCountry || "").toUpperCase(),
     status: "대기",
   };
   return payload;
@@ -1549,11 +1595,49 @@ function openNewDialog() {
         <td><input type="text" name="itemName" data-item-input required placeholder="예: 품명" /></td>
         <td><input type="text" name="itemCategory" data-item-input required placeholder="예: 품목구분" /></td>
         <td><input type="number" name="itemQuantity" data-item-input required min="0" step="1" placeholder="예: 10" /></td>
+        <td>
+          <select name="itemCurrency" data-item-input required>
+            ${ITEM_CURRENCY_OPTIONS_HTML}
+          </select>
+        </td>
         <td><input type="number" name="itemUnitPrice" data-item-input required min="0" step="0.01" placeholder="예: 1200" /></td>
         <td><input type="number" name="itemTotal" data-item-input required min="0" step="0.01" placeholder="예: 12000" /></td>
-        <td><input type="text" name="itemOrigin" data-item-input required placeholder="예: 대한민국" /></td>
+        <td>
+          <div class="item-origin-field">
+            <select name="itemOrigin" data-item-input required data-item-origin-select>
+              ${ITEM_ORIGIN_OPTIONS_HTML}
+            </select>
+            <input type="text" name="itemOriginOther" data-item-origin-other data-item-input placeholder="생산국을 입력하세요" hidden disabled />
+          </div>
+        </td>
       `;
       return row;
+    };
+
+    const setupOriginField = (row) => {
+      const originSelect = row.querySelector('[data-item-origin-select]');
+      const originOtherInput = row.querySelector('[data-item-origin-other]');
+      if (!(originSelect instanceof HTMLSelectElement) || !(originOtherInput instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const syncOriginField = () => {
+        const needCustom = originSelect.value === "기타";
+        originOtherInput.hidden = !needCustom;
+        originOtherInput.disabled = !needCustom;
+        originOtherInput.required = needCustom;
+        if (!needCustom) {
+          originOtherInput.value = "";
+        }
+        updateStepActionState();
+      };
+
+      if (!originSelect.dataset.boundOrigin) {
+        originSelect.addEventListener("change", syncOriginField);
+        originSelect.dataset.boundOrigin = "true";
+      }
+
+      syncOriginField();
     };
 
     const updateRowNumbers = () => {
@@ -1568,6 +1652,7 @@ function openNewDialog() {
     const addRow = () => {
       const row = createRow();
       itemRows.appendChild(row);
+      setupOriginField(row);
       updateRowNumbers();
       updateStepActionState();
     };
@@ -1617,6 +1702,8 @@ function openNewDialog() {
     } else if (!itemRows.children.length) {
       resetRows();
     } else {
+      const rows = $$('[data-item-row]', itemRows);
+      rows.forEach((row) => setupOriginField(row));
       updateRowNumbers();
       updateStepActionState();
     }
