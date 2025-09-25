@@ -160,6 +160,8 @@ input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6
 .item-table tbody input{width:100%}
 .item-table tbody input[type="number"]{text-align:right}
 .item-table tbody input[readonly]{background:#f7f8fb}
+.item-table tbody select{width:100%}
+.item-origin-field{display:flex;flex-direction:column;gap:.35rem}
 .step-container{display:flex;flex-direction:column;gap:1.25rem;margin-top:1rem}
 .step{display:block}
 .step[hidden]{display:none}
