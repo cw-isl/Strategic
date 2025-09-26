@@ -150,6 +150,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
 .grid [data-span="full"]{grid-column:1 / -1}
 label{display:grid;gap:.3rem;font-weight:600}
+.checkbox-group label{display:inline-flex;align-items:center;gap:.45rem;font-weight:600}
+.checkbox-group input[type="checkbox"]{width:18px;height:18px}
 .field-compact{gap:.15rem}
 .field-compact>input,.field-compact>select,.field-compact>textarea{margin-top:0}
 input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6px;font:inherit;resize:vertical}
@@ -163,12 +165,21 @@ input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6
 .item-table-grid th,.item-table-grid td{padding:.45rem .55rem;font-size:.82rem;vertical-align:middle}
 .item-table-grid th{text-align:center;background:#f1f4ff}
 .item-table-grid td{text-align:left}
-.item-table-grid td:first-child,.item-table-grid th:first-child{text-align:center;width:54px}
-.item-table-grid td:nth-child(2),.item-table-grid th:nth-child(2){width:70px;text-align:center}
+.item-table-grid td:first-child,.item-table-grid th:first-child{text-align:center;width:48px}
+.item-table-grid td:nth-child(2),.item-table-grid th:nth-child(2){width:54px;text-align:center}
+.item-table-grid td:nth-child(3),.item-table-grid th:nth-child(3){width:70px;text-align:center}
 .item-table-grid input,.item-table-grid select{width:100%;padding:.4rem .45rem}
 .item-table-grid input[type="number"]{text-align:right}
 .item-table-grid input[readonly]{background:#f7f8fb}
 .item-table-grid select{width:100%}
+.item-table-grid th.item-cell-drag-header{font-size:.75rem;color:#5d6a98}
+.item-table-grid td.item-cell-drag{padding:.2rem .25rem;text-align:center}
+.item-row-handle{width:32px;height:32px;border-radius:6px;border:none;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:grab;color:#4a5680;font-size:1.1rem;line-height:1;user-select:none}
+.item-row-handle:hover{background:rgba(21,62,138,.08)}
+.item-row-handle:active{cursor:grabbing}
+.item-row-handle:focus{outline:2px solid rgba(21,62,138,.35);outline-offset:2px}
+.item-table-grid tbody tr.is-dragging{opacity:.65}
+.item-table-grid tbody tr.is-drag-over{outline:2px dashed #9aa7d8;outline-offset:-3px}
 .item-cell-no{font-weight:600;color:#1d2e5b;text-align:center}
 .item-cell-no span{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
 .item-table tbody tr td:first-child{text-align:center}
