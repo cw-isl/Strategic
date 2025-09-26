@@ -105,25 +105,12 @@
           <div class="grid">
             <label>회사명<input name="importCompanyName" required placeholder="예: ABC Corp." /></label>
             <label>주소<input name="importAddress" required placeholder="예: 서울특별시 ..." /></label>
-            <label class="country-field">국가
-              <div class="country-select" data-country-select>
-                <button type="button" class="country-select-trigger" data-country-toggle aria-haspopup="listbox" aria-expanded="false">
-                  <span class="country-select-flag" data-country-flag>🌐</span>
-                  <span class="country-select-text">
-                    <span data-country-label>국가를 선택하세요</span>
-                    <span class="country-select-dial" data-country-selected-dial></span>
-                  </span>
-                </button>
-                <div class="country-dropdown" data-country-menu hidden>
-                  <div class="country-search">
-                    <input type="search" placeholder="검색" data-country-search aria-label="국가 검색" autocomplete="off" />
-                  </div>
-                  <ul class="country-options" data-country-options role="listbox"></ul>
-                </div>
-                <input type="hidden" name="importCountry" data-country-value data-required-hidden data-required-message="국가를 선택해주세요." data-target-selector="[data-country-toggle]" />
-              </div>
+            <label>국가
+              <select name="importCountry" required data-country-select-simple data-code-target="importCountryCode">
+                <option value="">선택</option>
+              </select>
             </label>
-            <label>국가번호<input name="importCountryCode" required readonly data-country-code placeholder="예: +82" /></label>
+            <label>국가번호<input name="importCountryCode" required readonly placeholder="예: +82" /></label>
             <label>전화번호<input name="importPhone" required placeholder="예: 02-000-0000" /></label>
             <label>이름<input name="importContactName" required placeholder="예: John Doe" /></label>
             <label>연락처<input name="importContactPhone" required placeholder="예: +82-10-0000-0000" /></label>
@@ -167,10 +154,37 @@
         </section>
         <section class="step" data-step="6" data-step-title="발송일자">
           <div class="grid">
-            <label data-span="full" class="field-compact">
-              <span class="sr-only">발송일자</span>
-              <input name="dispatchDate" type="date" required aria-label="발송일자" />
-            </label>
+            <div class="inline-calendar-field" data-span="full">
+              <div
+                class="inline-calendar"
+                data-inline-calendar
+                data-calendar-input-name="dispatchDate"
+                aria-label="발송일자 달력"
+              >
+                <header class="inline-calendar-header">
+                  <button type="button" class="inline-calendar-nav" data-calendar-prev aria-label="이전 달">‹</button>
+                  <div class="inline-calendar-current" data-calendar-current>2024년 1월</div>
+                  <button type="button" class="inline-calendar-nav" data-calendar-next aria-label="다음 달">›</button>
+                </header>
+                <div class="inline-calendar-weekdays" aria-hidden="true">
+                  <span>일</span>
+                  <span>월</span>
+                  <span>화</span>
+                  <span>수</span>
+                  <span>목</span>
+                  <span>금</span>
+                  <span>토</span>
+                </div>
+                <div
+                  class="inline-calendar-grid"
+                  role="grid"
+                  aria-label="발송일자를 선택하세요"
+                  data-calendar-grid
+                ></div>
+                <p class="inline-calendar-selection" data-calendar-selection aria-live="polite">날짜를 선택하세요.</p>
+                <input type="hidden" name="dispatchDate" required data-calendar-input />
+              </div>
+            </div>
           </div>
         </section>
         <section class="step" data-step="7" data-step-title="운송수단">
@@ -268,6 +282,7 @@
             <table class="item-table-grid">
               <thead>
                 <tr>
+                  <th scope="col" class="item-cell-drag-header" aria-label="행 이동">이동</th>
                   <th scope="col">선택</th>
                   <th scope="col">NO</th>
                   <th scope="col">품명</th>

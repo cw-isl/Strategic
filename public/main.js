@@ -1105,10 +1105,8 @@ function openNewDialog() {
       if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
         return false;
       }
-      const hasValidItems = packingState.packings.every(
-        (packing) => Array.isArray(packing.itemKeys) && packing.itemKeys.length > 0
-      );
-      if (!hasValidItems) {
+      const hasValidStructure = packingState.packings.every((packing) => Array.isArray(packing.itemKeys));
+      if (!hasValidStructure) {
         return false;
       }
     }
@@ -1684,7 +1682,7 @@ function openNewDialog() {
     const importerFields = {
       company: form.querySelector('input[name="importCompanyName"]'),
       address: form.querySelector('input[name="importAddress"]'),
-      country: form.querySelector('input[name="importCountry"]'),
+      country: form.querySelector('select[name="importCountry"]'),
       countryCode: form.querySelector('input[name="importCountryCode"]'),
       phone: form.querySelector('input[name="importPhone"]'),
       contactName: form.querySelector('input[name="importContactName"]'),
@@ -1724,6 +1722,7 @@ function openNewDialog() {
         const hasOption = Array.from(notifyFields.country.options).some((option) => option.value === importCountryValue);
         notifyFields.country.value = hasOption ? importCountryValue : "";
         notifyFields.country.dispatchEvent(new Event("change", { bubbles: true }));
+        updateSimpleSelectDial(notifyFields.country);
       }
       if (notifyFields.countryCode && importerFields.countryCode) {
         notifyFields.countryCode.value = importerFields.countryCode.value;
@@ -1809,23 +1808,8 @@ function openNewDialog() {
   };
 
   const setupInlineCalendar = () => {
-    const calendar = form.querySelector('[data-inline-calendar]');
-    if (!(calendar instanceof HTMLElement)) return;
-
-    const hiddenInput = calendar.querySelector('[data-calendar-input]');
-    const grid = calendar.querySelector('[data-calendar-grid]');
-    const currentLabel = calendar.querySelector('[data-calendar-current]');
-    const selectionLabel = calendar.querySelector('[data-calendar-selection]');
-    const prevButton = calendar.querySelector('[data-calendar-prev]');
-    const nextButton = calendar.querySelector('[data-calendar-next]');
-
-    if (
-      !(hiddenInput instanceof HTMLInputElement) ||
-      !(grid instanceof HTMLElement) ||
-      !(currentLabel instanceof HTMLElement)
-    ) {
-      return;
-    }
+    const calendars = $$('[data-inline-calendar]', form);
+    if (!calendars.length) return;
 
     const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];
     const today = new Date();
@@ -1868,253 +1852,271 @@ function openNewDialog() {
 
     const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
 
-    const state = calendar._inlineCalendarState || {};
-    calendar._inlineCalendarState = state;
+    calendars.forEach((calendar) => {
+      if (!(calendar instanceof HTMLElement)) return;
+      const hiddenInput = calendar.querySelector('[data-calendar-input]');
+      const grid = calendar.querySelector('[data-calendar-grid]');
+      const currentLabel = calendar.querySelector('[data-calendar-current]');
+      const selectionLabel = calendar.querySelector('[data-calendar-selection]');
+      const prevButton = calendar.querySelector('[data-calendar-prev]');
+      const nextButton = calendar.querySelector('[data-calendar-next]');
 
-    const syncStateFromInput = () => {
-      const selected = parseIsoDate(hiddenInput.value);
-      state.selected = selected;
-      if (selected) {
-        state.currentYear = selected.getFullYear();
-        state.currentMonth = selected.getMonth();
-        state.focusDate = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
+      if (
+        !(hiddenInput instanceof HTMLInputElement) ||
+        !(grid instanceof HTMLElement) ||
+        !(currentLabel instanceof HTMLElement)
+      ) {
         return;
       }
 
-      if (typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
-        state.currentYear = today.getFullYear();
-        state.currentMonth = today.getMonth();
-      }
+      const state = calendar._inlineCalendarState || {};
+      calendar._inlineCalendarState = state;
 
-      const focusDay = state.focusDate instanceof Date ? state.focusDate.getDate() : today.getDate();
-      const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
-      state.focusDate = new Date(
-        state.currentYear,
-        state.currentMonth,
-        Math.min(Math.max(focusDay, 1), daysInMonth)
-      );
-    };
-
-    const updateSelectionMessage = () => {
-      if (!(selectionLabel instanceof HTMLElement)) return;
-      if (state.selected instanceof Date) {
-        selectionLabel.textContent = `${formatHumanDate(state.selected)}을(를) 선택했습니다.`;
-      } else {
-        selectionLabel.textContent = "날짜를 선택하세요.";
-      }
-    };
-
-    const renderCalendar = ({ focus } = {}) => {
-      if (!(grid instanceof HTMLElement) || typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
-        return;
-      }
-      const firstOfMonth = new Date(state.currentYear, state.currentMonth, 1);
-      const startOffset = firstOfMonth.getDay();
-      const startDate = new Date(firstOfMonth);
-      startDate.setDate(firstOfMonth.getDate() - startOffset);
-
-      const todayKey = formatIsoDate(today);
-      const selectedKey = state.selected instanceof Date ? formatIsoDate(state.selected) : null;
-      const focusKey = state.focusDate instanceof Date ? formatIsoDate(state.focusDate) : null;
-
-      const days = [];
-      for (let index = 0; index < 42; index += 1) {
-        const date = new Date(startDate);
-        date.setDate(startDate.getDate() + index);
-        days.push(date);
-      }
-
-      grid.innerHTML = days
-        .map((date) => {
-          const iso = formatIsoDate(date);
-          const isOutside = date.getMonth() !== state.currentMonth;
-          const isToday = iso === todayKey;
-          const isSelected = !!selectedKey && iso === selectedKey;
-          const isFocused = !!focusKey && iso === focusKey;
-          const classes = ["inline-calendar-day"];
-          if (isOutside) classes.push("is-outside");
-          if (isToday) classes.push("is-today");
-          if (isSelected) classes.push("is-selected");
-          const ariaSelected = isSelected ? "true" : "false";
-          const tabIndex = isFocused ? "0" : "-1";
-          const outsideAttr = isOutside ? ' data-outside="true"' : "";
-          return `
-            <button
-              type="button"
-              class="${classes.join(" ")}"
-              data-calendar-date="${iso}"
-              role="gridcell"
-              aria-selected="${ariaSelected}"
-              tabindex="${tabIndex}"
-              aria-label="${formatHumanDate(date)}"
-              ${outsideAttr}
-            >
-              ${date.getDate()}
-            </button>
-          `;
-        })
-        .join("");
-
-      currentLabel.textContent = formatMonthLabel(state.currentYear, state.currentMonth);
-      updateSelectionMessage();
-
-      if (focus) {
-        const focusEl = grid.querySelector('[tabindex="0"]');
-        if (focusEl instanceof HTMLElement) {
-          focusEl.focus();
+      const updateSelectionMessage = () => {
+        if (!(selectionLabel instanceof HTMLElement)) return;
+        if (state.selected instanceof Date) {
+          selectionLabel.textContent = `${formatHumanDate(state.selected)}을(를) 선택했습니다.`;
+        } else {
+          selectionLabel.textContent = "날짜를 선택하세요.";
         }
-      }
-    };
+      };
 
-    const setCurrentMonth = (year, month, { preserveFocus = false } = {}) => {
-      const next = new Date(year, month, 1);
-      state.currentYear = next.getFullYear();
-      state.currentMonth = next.getMonth();
-      const focusDay = preserveFocus && state.focusDate instanceof Date ? state.focusDate.getDate() : 1;
-      const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
-      state.focusDate = new Date(
-        state.currentYear,
-        state.currentMonth,
-        Math.min(Math.max(focusDay, 1), daysInMonth)
-      );
-      renderCalendar({ focus: true });
-    };
-
-    const selectDate = (date, { focus = true } = {}) => {
-      const normalized = normalizeDate(date);
-      if (!normalized) return;
-      state.selected = normalized;
-      state.currentYear = normalized.getFullYear();
-      state.currentMonth = normalized.getMonth();
-      state.focusDate = new Date(normalized);
-      hiddenInput.value = formatIsoDate(normalized);
-      renderCalendar({ focus });
-      updateStepActionState();
-    };
-
-    const moveFocusByDays = (offset) => {
-      const base = state.focusDate instanceof Date
-        ? state.focusDate
-        : new Date(state.currentYear, state.currentMonth, 1);
-      const next = new Date(base);
-      next.setDate(base.getDate() + offset);
-      state.focusDate = normalizeDate(next);
-      state.currentYear = state.focusDate.getFullYear();
-      state.currentMonth = state.focusDate.getMonth();
-      renderCalendar({ focus: true });
-    };
-
-    const moveFocusToWeekBoundary = (position) => {
-      if (!(state.focusDate instanceof Date)) {
-        moveFocusByDays(0);
-        return;
-      }
-      const day = state.focusDate.getDay();
-      const offset = position === "start" ? -day : 6 - day;
-      moveFocusByDays(offset);
-    };
-
-    const moveFocusByMonths = (offset) => {
-      const base = state.focusDate instanceof Date
-        ? state.focusDate
-        : new Date(state.currentYear, state.currentMonth, 1);
-      const next = new Date(base);
-      next.setMonth(base.getMonth() + offset);
-      state.focusDate = normalizeDate(next);
-      state.currentYear = state.focusDate.getFullYear();
-      state.currentMonth = state.focusDate.getMonth();
-      renderCalendar({ focus: true });
-    };
-
-    const handleGridKeydown = (event) => {
-      const target = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
-      if (!target) return;
-      switch (event.key) {
-        case "ArrowUp":
-          event.preventDefault();
-          moveFocusByDays(-7);
-          break;
-        case "ArrowDown":
-          event.preventDefault();
-          moveFocusByDays(7);
-          break;
-        case "ArrowLeft":
-          event.preventDefault();
-          moveFocusByDays(-1);
-          break;
-        case "ArrowRight":
-          event.preventDefault();
-          moveFocusByDays(1);
-          break;
-        case "Home":
-          event.preventDefault();
-          moveFocusToWeekBoundary("start");
-          break;
-        case "End":
-          event.preventDefault();
-          moveFocusToWeekBoundary("end");
-          break;
-        case "PageUp":
-          event.preventDefault();
-          moveFocusByMonths(event.shiftKey ? -12 : -1);
-          break;
-        case "PageDown":
-          event.preventDefault();
-          moveFocusByMonths(event.shiftKey ? 12 : 1);
-          break;
-        case "Enter":
-        case " ":
-          event.preventDefault();
-          {
-            const iso = target.dataset.calendarDate;
-            const date = parseIsoDate(iso);
-            if (date) {
-              selectDate(date, { focus: true });
-            }
-          }
-          break;
-        default:
-          break;
-      }
-    };
-
-    if (!calendar.dataset.boundInlineCalendar) {
-      grid.addEventListener("click", (event) => {
-        const button = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
-        if (!button) return;
-        const date = parseIsoDate(button.dataset.calendarDate || "");
-        if (date) {
-          selectDate(date, { focus: true });
+      const syncStateFromInput = () => {
+        const selected = parseIsoDate(hiddenInput.value);
+        state.selected = selected;
+        if (selected) {
+          state.currentYear = selected.getFullYear();
+          state.currentMonth = selected.getMonth();
+          state.focusDate = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
+          return;
         }
-      });
-      grid.addEventListener("keydown", handleGridKeydown);
-      if (prevButton instanceof HTMLButtonElement) {
-        prevButton.addEventListener("click", () => {
-          setCurrentMonth(state.currentYear, state.currentMonth - 1, { preserveFocus: true });
-        });
-      }
-      if (nextButton instanceof HTMLButtonElement) {
-        nextButton.addEventListener("click", () => {
-          setCurrentMonth(state.currentYear, state.currentMonth + 1, { preserveFocus: true });
-        });
-      }
-      form.addEventListener("reset", () => {
-        window.requestAnimationFrame(() => {
-          hiddenInput.value = "";
-          state.selected = null;
+
+        if (typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
           state.currentYear = today.getFullYear();
           state.currentMonth = today.getMonth();
-          state.focusDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-          renderCalendar();
-          updateStepActionState();
-        });
-      });
-      calendar.dataset.boundInlineCalendar = "true";
-    }
+        }
 
-    syncStateFromInput();
-    renderCalendar();
-    updateStepActionState();
+        const focusDay = state.focusDate instanceof Date ? state.focusDate.getDate() : today.getDate();
+        const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
+        state.focusDate = new Date(
+          state.currentYear,
+          state.currentMonth,
+          Math.min(Math.max(focusDay, 1), daysInMonth)
+        );
+      };
+
+      const renderCalendar = ({ focus } = {}) => {
+        if (!(grid instanceof HTMLElement) || typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
+          return;
+        }
+        const firstOfMonth = new Date(state.currentYear, state.currentMonth, 1);
+        const startOffset = firstOfMonth.getDay();
+        const startDate = new Date(firstOfMonth);
+        startDate.setDate(firstOfMonth.getDate() - startOffset);
+
+        const todayKey = formatIsoDate(today);
+        const selectedKey = state.selected instanceof Date ? formatIsoDate(state.selected) : null;
+        const focusKey = state.focusDate instanceof Date ? formatIsoDate(state.focusDate) : null;
+
+        const days = [];
+        for (let index = 0; index < 42; index += 1) {
+          const date = new Date(startDate);
+          date.setDate(startDate.getDate() + index);
+          days.push(date);
+        }
+
+        grid.innerHTML = days
+          .map((date) => {
+            const iso = formatIsoDate(date);
+            const isOutside = date.getMonth() !== state.currentMonth;
+            const isToday = iso === todayKey;
+            const isSelected = !!selectedKey && iso === selectedKey;
+            const isFocused = !!focusKey && iso === focusKey;
+            const classes = ["inline-calendar-day"];
+            if (isOutside) classes.push("is-outside");
+            if (isToday) classes.push("is-today");
+            if (isSelected) classes.push("is-selected");
+            const ariaSelected = isSelected ? "true" : "false";
+            const tabIndex = isFocused ? "0" : "-1";
+            const outsideAttr = isOutside ? ' data-outside="true"' : "";
+            return `
+              <button
+                type="button"
+                class="${classes.join(" ")}"
+                data-calendar-date="${iso}"
+                role="gridcell"
+                aria-selected="${ariaSelected}"
+                tabindex="${tabIndex}"
+                aria-label="${formatHumanDate(date)}"
+                ${outsideAttr}
+              >
+                ${date.getDate()}
+              </button>
+            `;
+          })
+          .join("");
+
+        currentLabel.textContent = formatMonthLabel(state.currentYear, state.currentMonth);
+        updateSelectionMessage();
+
+        if (focus) {
+          const focusEl = grid.querySelector('[tabindex="0"]');
+          if (focusEl instanceof HTMLElement) {
+            focusEl.focus();
+          }
+        }
+      };
+
+      const setCurrentMonth = (year, month, { preserveFocus = false } = {}) => {
+        const next = new Date(year, month, 1);
+        state.currentYear = next.getFullYear();
+        state.currentMonth = next.getMonth();
+        const focusDay = preserveFocus && state.focusDate instanceof Date ? state.focusDate.getDate() : 1;
+        const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
+        state.focusDate = new Date(
+          state.currentYear,
+          state.currentMonth,
+          Math.min(Math.max(focusDay, 1), daysInMonth)
+        );
+        renderCalendar({ focus: true });
+      };
+
+      const selectDate = (date, { focus = true } = {}) => {
+        const normalized = normalizeDate(date);
+        if (!normalized) return;
+        state.selected = normalized;
+        state.currentYear = normalized.getFullYear();
+        state.currentMonth = normalized.getMonth();
+        state.focusDate = new Date(normalized);
+        hiddenInput.value = formatIsoDate(normalized);
+        renderCalendar({ focus });
+        updateStepActionState();
+      };
+
+      const moveFocusByDays = (offset) => {
+        const base = state.focusDate instanceof Date
+          ? state.focusDate
+          : new Date(state.currentYear, state.currentMonth, 1);
+        const next = new Date(base);
+        next.setDate(base.getDate() + offset);
+        state.focusDate = normalizeDate(next);
+        state.currentYear = state.focusDate.getFullYear();
+        state.currentMonth = state.focusDate.getMonth();
+        renderCalendar({ focus: true });
+      };
+
+      const moveFocusToWeekBoundary = (position) => {
+        if (!(state.focusDate instanceof Date)) {
+          moveFocusByDays(0);
+          return;
+        }
+        const day = state.focusDate.getDay();
+        const offset = position === "start" ? -day : 6 - day;
+        moveFocusByDays(offset);
+      };
+
+      const moveFocusByMonths = (offset) => {
+        const base = state.focusDate instanceof Date
+          ? state.focusDate
+          : new Date(state.currentYear, state.currentMonth, 1);
+        const next = new Date(base);
+        next.setMonth(base.getMonth() + offset);
+        state.focusDate = normalizeDate(next);
+        state.currentYear = state.focusDate.getFullYear();
+        state.currentMonth = state.focusDate.getMonth();
+        renderCalendar({ focus: true });
+      };
+
+      const handleGridKeydown = (event) => {
+        const target = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
+        if (!target) return;
+        switch (event.key) {
+          case "ArrowUp":
+            event.preventDefault();
+            moveFocusByDays(-7);
+            break;
+          case "ArrowDown":
+            event.preventDefault();
+            moveFocusByDays(7);
+            break;
+          case "ArrowLeft":
+            event.preventDefault();
+            moveFocusByDays(-1);
+            break;
+          case "ArrowRight":
+            event.preventDefault();
+            moveFocusByDays(1);
+            break;
+          case "Home":
+            event.preventDefault();
+            moveFocusToWeekBoundary("start");
+            break;
+          case "End":
+            event.preventDefault();
+            moveFocusToWeekBoundary("end");
+            break;
+          case "PageUp":
+            event.preventDefault();
+            moveFocusByMonths(event.shiftKey ? -12 : -1);
+            break;
+          case "PageDown":
+            event.preventDefault();
+            moveFocusByMonths(event.shiftKey ? 12 : 1);
+            break;
+          case "Enter":
+          case " ":
+            event.preventDefault();
+            {
+              const iso = target.dataset.calendarDate;
+              const date = parseIsoDate(iso);
+              if (date) {
+                selectDate(date, { focus: true });
+              }
+            }
+            break;
+          default:
+            break;
+        }
+      };
+
+      if (!calendar.dataset.boundInlineCalendar) {
+        grid.addEventListener("click", (event) => {
+          const button = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
+          if (!button) return;
+          const date = parseIsoDate(button.dataset.calendarDate || "");
+          if (date) {
+            selectDate(date, { focus: true });
+          }
+        });
+        grid.addEventListener("keydown", handleGridKeydown);
+        if (prevButton instanceof HTMLButtonElement) {
+          prevButton.addEventListener("click", () => {
+            setCurrentMonth(state.currentYear, state.currentMonth - 1, { preserveFocus: true });
+          });
+        }
+        if (nextButton instanceof HTMLButtonElement) {
+          nextButton.addEventListener("click", () => {
+            setCurrentMonth(state.currentYear, state.currentMonth + 1, { preserveFocus: true });
+          });
+        }
+        form.addEventListener("reset", () => {
+          window.requestAnimationFrame(() => {
+            hiddenInput.value = "";
+            state.selected = null;
+            state.currentYear = today.getFullYear();
+            state.currentMonth = today.getMonth();
+            state.focusDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            renderCalendar();
+            updateStepActionState();
+          });
+        });
+        calendar.dataset.boundInlineCalendar = "true";
+      }
+
+      syncStateFromInput();
+      renderCalendar();
+      updateStepActionState();
+    });
   };
 
   const setupIncotermsField = () => {
@@ -2163,6 +2165,8 @@ function openNewDialog() {
     const itemTotalSumEl = itemsStep.querySelector('[data-item-total-sum]');
     const qtyFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
     const amountFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
+    let draggingRow = null;
+    let dragOverRow = null;
 
     const getNumericValue = (input) => {
       if (!(input instanceof HTMLInputElement)) return null;
@@ -2191,6 +2195,9 @@ function openNewDialog() {
       row.setAttribute("data-item-row", "");
       assignRowKey(row);
       row.innerHTML = `
+        <td class="item-cell-drag">
+          <button type="button" class="item-row-handle" data-item-drag-handle aria-label="행 이동" draggable="true">↕</button>
+        </td>
         <td class="item-cell-select"><input type="checkbox" data-item-select aria-label="행 선택" /></td>
         <td class="item-cell-no">
           <span data-item-no-display>1</span>
@@ -2315,6 +2322,92 @@ function openNewDialog() {
       });
     };
 
+    const clearDragOverState = () => {
+      if (dragOverRow) {
+        dragOverRow.classList.remove('is-drag-over');
+        dragOverRow = null;
+      }
+    };
+
+    const handleDragStart = (event) => {
+      const handle = event.target instanceof HTMLElement ? event.target.closest('[data-item-drag-handle]') : null;
+      if (!handle) return;
+      const row = handle.closest('[data-item-row]');
+      if (!row) return;
+      draggingRow = row;
+      row.classList.add('is-dragging');
+      clearDragOverState();
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        try {
+          event.dataTransfer.setData('text/plain', row.dataset.itemKey || '');
+        } catch (err) {
+          // ignore
+        }
+      }
+    };
+
+    const handleDragOver = (event) => {
+      if (!draggingRow) return;
+      const targetRow = event.target instanceof HTMLElement ? event.target.closest('[data-item-row]') : null;
+      if (!targetRow) {
+        event.preventDefault();
+        clearDragOverState();
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+      if (targetRow === draggingRow) {
+        clearDragOverState();
+        return;
+      }
+      const rect = targetRow.getBoundingClientRect();
+      const shouldInsertAfter = event.clientY - rect.top > rect.height / 2;
+      const referenceNode = shouldInsertAfter ? targetRow.nextSibling : targetRow;
+      if (referenceNode !== draggingRow) {
+        itemRows.insertBefore(draggingRow, referenceNode);
+      }
+      if (dragOverRow && dragOverRow !== targetRow) {
+        dragOverRow.classList.remove('is-drag-over');
+      }
+      dragOverRow = targetRow;
+      targetRow.classList.add('is-drag-over');
+    };
+
+    const handleDragLeave = (event) => {
+      if (!draggingRow) return;
+      const targetRow = event.target instanceof HTMLElement ? event.target.closest('[data-item-row]') : null;
+      if (!targetRow || targetRow === draggingRow) return;
+      targetRow.classList.remove('is-drag-over');
+      if (dragOverRow === targetRow) {
+        dragOverRow = null;
+      }
+    };
+
+    const finalizeDragReorder = () => {
+      updateRowNumbers();
+      updateItemSummary();
+      updateStepActionState();
+    };
+
+    const handleDrop = (event) => {
+      if (!draggingRow) return;
+      event.preventDefault();
+      clearDragOverState();
+      finalizeDragReorder();
+    };
+
+    const handleDragEnd = () => {
+      if (draggingRow) {
+        draggingRow.classList.remove('is-dragging');
+      }
+      draggingRow = null;
+      clearDragOverState();
+      finalizeDragReorder();
+    };
+
     const addRow = () => {
       const row = createRow();
       itemRows.appendChild(row);
@@ -2365,6 +2458,11 @@ function openNewDialog() {
       };
       itemRows.addEventListener("input", handleItemChange);
       itemRows.addEventListener("change", handleItemChange);
+      itemRows.addEventListener("dragstart", handleDragStart);
+      itemRows.addEventListener("dragover", handleDragOver);
+      itemRows.addEventListener("drop", handleDrop);
+      itemRows.addEventListener("dragend", handleDragEnd);
+      itemRows.addEventListener("dragleave", handleDragLeave);
       form.addEventListener("reset", () => {
         window.requestAnimationFrame(() => {
           resetRows();
@@ -2450,6 +2548,25 @@ function openNewDialog() {
       if (!(input instanceof HTMLInputElement)) return null;
       const value = Number(input.value);
       return Number.isFinite(value) ? value : null;
+    };
+
+    const hasValidDimensions = () => {
+      const lengthValue = getInputNumber(inputs.length);
+      const widthValue = getInputNumber(inputs.width);
+      const heightValue = getInputNumber(inputs.height);
+      return (
+        Number.isFinite(lengthValue) &&
+        lengthValue > 0 &&
+        Number.isFinite(widthValue) &&
+        widthValue > 0 &&
+        Number.isFinite(heightValue) &&
+        heightValue > 0
+      );
+    };
+
+    const updateCreateButtonState = () => {
+      if (!(createButton instanceof HTMLButtonElement)) return;
+      createButton.disabled = !hasValidDimensions();
     };
 
     const gatherItems = () => {
@@ -2613,6 +2730,7 @@ function openNewDialog() {
         inputs.cbm.value = '';
         delete inputs.cbm.dataset.manual;
       }
+      updateCreateButtonState();
     };
 
     const openForm = ({ focusInput = true } = {}) => {
@@ -2713,10 +2831,6 @@ function openNewDialog() {
         return;
       }
       const selectedItems = state.items.filter((item) => state.selection.has(item.key));
-      if (!selectedItems.length) {
-        alert('팩킹에 포함할 품목을 선택해주세요.');
-        return;
-      }
       const cbmInputValue = getInputNumber(inputs.cbm);
       const computedCbm = (lengthValue * widthValue * heightValue) / 1_000_000;
       const cbmValue = Number.isFinite(cbmInputValue) ? cbmInputValue : computedCbm;
@@ -2821,6 +2935,7 @@ function openNewDialog() {
         if (input instanceof HTMLInputElement) {
           input.addEventListener('input', () => {
             updateCbmFromDimensions();
+            updateCreateButtonState();
           });
         }
       });
@@ -2833,6 +2948,7 @@ function openNewDialog() {
           renderItemTable();
           renderPackings();
           ensureDefaultName();
+          updateCreateButtonState();
           updateStepActionState();
         });
       });
@@ -2845,6 +2961,7 @@ function openNewDialog() {
     renderItemTable();
     ensureDefaultName();
     renderPackings();
+    updateCreateButtonState();
     updateStepActionState();
 
     syncPackingVisibility = (isActive) => {
