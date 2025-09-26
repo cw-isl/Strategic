@@ -1808,6 +1808,315 @@ function openNewDialog() {
     toggleDetail();
   };
 
+  const setupInlineCalendar = () => {
+    const calendar = form.querySelector('[data-inline-calendar]');
+    if (!(calendar instanceof HTMLElement)) return;
+
+    const hiddenInput = calendar.querySelector('[data-calendar-input]');
+    const grid = calendar.querySelector('[data-calendar-grid]');
+    const currentLabel = calendar.querySelector('[data-calendar-current]');
+    const selectionLabel = calendar.querySelector('[data-calendar-selection]');
+    const prevButton = calendar.querySelector('[data-calendar-prev]');
+    const nextButton = calendar.querySelector('[data-calendar-next]');
+
+    if (
+      !(hiddenInput instanceof HTMLInputElement) ||
+      !(grid instanceof HTMLElement) ||
+      !(currentLabel instanceof HTMLElement)
+    ) {
+      return;
+    }
+
+    const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const normalizeDate = (date) => {
+      if (!(date instanceof Date)) return null;
+      return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    };
+
+    const parseIsoDate = (value) => {
+      if (typeof value !== "string" || !value) return null;
+      const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      const year = Number(match[1]);
+      const month = Number(match[2]) - 1;
+      const day = Number(match[3]);
+      const date = new Date(year, month, day);
+      if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+        return null;
+      }
+      return normalizeDate(date);
+    };
+
+    const formatIsoDate = (date) => {
+      if (!(date instanceof Date)) return "";
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    const formatMonthLabel = (year, month) => `${year}년 ${month + 1}월`;
+
+    const formatHumanDate = (date) => {
+      if (!(date instanceof Date)) return "";
+      const weekday = weekdayNames[date.getDay()] ?? "";
+      return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일${weekday ? ` (${weekday})` : ""}`;
+    };
+
+    const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+
+    const state = calendar._inlineCalendarState || {};
+    calendar._inlineCalendarState = state;
+
+    const syncStateFromInput = () => {
+      const selected = parseIsoDate(hiddenInput.value);
+      state.selected = selected;
+      if (selected) {
+        state.currentYear = selected.getFullYear();
+        state.currentMonth = selected.getMonth();
+        state.focusDate = new Date(selected.getFullYear(), selected.getMonth(), selected.getDate());
+        return;
+      }
+
+      if (typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
+        state.currentYear = today.getFullYear();
+        state.currentMonth = today.getMonth();
+      }
+
+      const focusDay = state.focusDate instanceof Date ? state.focusDate.getDate() : today.getDate();
+      const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
+      state.focusDate = new Date(
+        state.currentYear,
+        state.currentMonth,
+        Math.min(Math.max(focusDay, 1), daysInMonth)
+      );
+    };
+
+    const updateSelectionMessage = () => {
+      if (!(selectionLabel instanceof HTMLElement)) return;
+      if (state.selected instanceof Date) {
+        selectionLabel.textContent = `${formatHumanDate(state.selected)}을(를) 선택했습니다.`;
+      } else {
+        selectionLabel.textContent = "날짜를 선택하세요.";
+      }
+    };
+
+    const renderCalendar = ({ focus } = {}) => {
+      if (!(grid instanceof HTMLElement) || typeof state.currentYear !== "number" || typeof state.currentMonth !== "number") {
+        return;
+      }
+      const firstOfMonth = new Date(state.currentYear, state.currentMonth, 1);
+      const startOffset = firstOfMonth.getDay();
+      const startDate = new Date(firstOfMonth);
+      startDate.setDate(firstOfMonth.getDate() - startOffset);
+
+      const todayKey = formatIsoDate(today);
+      const selectedKey = state.selected instanceof Date ? formatIsoDate(state.selected) : null;
+      const focusKey = state.focusDate instanceof Date ? formatIsoDate(state.focusDate) : null;
+
+      const days = [];
+      for (let index = 0; index < 42; index += 1) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + index);
+        days.push(date);
+      }
+
+      grid.innerHTML = days
+        .map((date) => {
+          const iso = formatIsoDate(date);
+          const isOutside = date.getMonth() !== state.currentMonth;
+          const isToday = iso === todayKey;
+          const isSelected = !!selectedKey && iso === selectedKey;
+          const isFocused = !!focusKey && iso === focusKey;
+          const classes = ["inline-calendar-day"];
+          if (isOutside) classes.push("is-outside");
+          if (isToday) classes.push("is-today");
+          if (isSelected) classes.push("is-selected");
+          const ariaSelected = isSelected ? "true" : "false";
+          const tabIndex = isFocused ? "0" : "-1";
+          const outsideAttr = isOutside ? ' data-outside="true"' : "";
+          return `
+            <button
+              type="button"
+              class="${classes.join(" ")}"
+              data-calendar-date="${iso}"
+              role="gridcell"
+              aria-selected="${ariaSelected}"
+              tabindex="${tabIndex}"
+              aria-label="${formatHumanDate(date)}"
+              ${outsideAttr}
+            >
+              ${date.getDate()}
+            </button>
+          `;
+        })
+        .join("");
+
+      currentLabel.textContent = formatMonthLabel(state.currentYear, state.currentMonth);
+      updateSelectionMessage();
+
+      if (focus) {
+        const focusEl = grid.querySelector('[tabindex="0"]');
+        if (focusEl instanceof HTMLElement) {
+          focusEl.focus();
+        }
+      }
+    };
+
+    const setCurrentMonth = (year, month, { preserveFocus = false } = {}) => {
+      const next = new Date(year, month, 1);
+      state.currentYear = next.getFullYear();
+      state.currentMonth = next.getMonth();
+      const focusDay = preserveFocus && state.focusDate instanceof Date ? state.focusDate.getDate() : 1;
+      const daysInMonth = getDaysInMonth(state.currentYear, state.currentMonth);
+      state.focusDate = new Date(
+        state.currentYear,
+        state.currentMonth,
+        Math.min(Math.max(focusDay, 1), daysInMonth)
+      );
+      renderCalendar({ focus: true });
+    };
+
+    const selectDate = (date, { focus = true } = {}) => {
+      const normalized = normalizeDate(date);
+      if (!normalized) return;
+      state.selected = normalized;
+      state.currentYear = normalized.getFullYear();
+      state.currentMonth = normalized.getMonth();
+      state.focusDate = new Date(normalized);
+      hiddenInput.value = formatIsoDate(normalized);
+      renderCalendar({ focus });
+      updateStepActionState();
+    };
+
+    const moveFocusByDays = (offset) => {
+      const base = state.focusDate instanceof Date
+        ? state.focusDate
+        : new Date(state.currentYear, state.currentMonth, 1);
+      const next = new Date(base);
+      next.setDate(base.getDate() + offset);
+      state.focusDate = normalizeDate(next);
+      state.currentYear = state.focusDate.getFullYear();
+      state.currentMonth = state.focusDate.getMonth();
+      renderCalendar({ focus: true });
+    };
+
+    const moveFocusToWeekBoundary = (position) => {
+      if (!(state.focusDate instanceof Date)) {
+        moveFocusByDays(0);
+        return;
+      }
+      const day = state.focusDate.getDay();
+      const offset = position === "start" ? -day : 6 - day;
+      moveFocusByDays(offset);
+    };
+
+    const moveFocusByMonths = (offset) => {
+      const base = state.focusDate instanceof Date
+        ? state.focusDate
+        : new Date(state.currentYear, state.currentMonth, 1);
+      const next = new Date(base);
+      next.setMonth(base.getMonth() + offset);
+      state.focusDate = normalizeDate(next);
+      state.currentYear = state.focusDate.getFullYear();
+      state.currentMonth = state.focusDate.getMonth();
+      renderCalendar({ focus: true });
+    };
+
+    const handleGridKeydown = (event) => {
+      const target = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
+      if (!target) return;
+      switch (event.key) {
+        case "ArrowUp":
+          event.preventDefault();
+          moveFocusByDays(-7);
+          break;
+        case "ArrowDown":
+          event.preventDefault();
+          moveFocusByDays(7);
+          break;
+        case "ArrowLeft":
+          event.preventDefault();
+          moveFocusByDays(-1);
+          break;
+        case "ArrowRight":
+          event.preventDefault();
+          moveFocusByDays(1);
+          break;
+        case "Home":
+          event.preventDefault();
+          moveFocusToWeekBoundary("start");
+          break;
+        case "End":
+          event.preventDefault();
+          moveFocusToWeekBoundary("end");
+          break;
+        case "PageUp":
+          event.preventDefault();
+          moveFocusByMonths(event.shiftKey ? -12 : -1);
+          break;
+        case "PageDown":
+          event.preventDefault();
+          moveFocusByMonths(event.shiftKey ? 12 : 1);
+          break;
+        case "Enter":
+        case " ":
+          event.preventDefault();
+          {
+            const iso = target.dataset.calendarDate;
+            const date = parseIsoDate(iso);
+            if (date) {
+              selectDate(date, { focus: true });
+            }
+          }
+          break;
+        default:
+          break;
+      }
+    };
+
+    if (!calendar.dataset.boundInlineCalendar) {
+      grid.addEventListener("click", (event) => {
+        const button = event.target instanceof HTMLElement ? event.target.closest('[data-calendar-date]') : null;
+        if (!button) return;
+        const date = parseIsoDate(button.dataset.calendarDate || "");
+        if (date) {
+          selectDate(date, { focus: true });
+        }
+      });
+      grid.addEventListener("keydown", handleGridKeydown);
+      if (prevButton instanceof HTMLButtonElement) {
+        prevButton.addEventListener("click", () => {
+          setCurrentMonth(state.currentYear, state.currentMonth - 1, { preserveFocus: true });
+        });
+      }
+      if (nextButton instanceof HTMLButtonElement) {
+        nextButton.addEventListener("click", () => {
+          setCurrentMonth(state.currentYear, state.currentMonth + 1, { preserveFocus: true });
+        });
+      }
+      form.addEventListener("reset", () => {
+        window.requestAnimationFrame(() => {
+          hiddenInput.value = "";
+          state.selected = null;
+          state.currentYear = today.getFullYear();
+          state.currentMonth = today.getMonth();
+          state.focusDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+          renderCalendar();
+          updateStepActionState();
+        });
+      });
+      calendar.dataset.boundInlineCalendar = "true";
+    }
+
+    syncStateFromInput();
+    renderCalendar();
+    updateStepActionState();
+  };
+
   const setupIncotermsField = () => {
     if (!incotermsSelect || !incotermsOtherInput) return;
     const toggleDetail = () => {
@@ -1855,6 +2164,20 @@ function openNewDialog() {
     const qtyFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
     const amountFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
 
+    const getNumericValue = (input) => {
+      if (!(input instanceof HTMLInputElement)) return null;
+      const raw = (input.value ?? '').trim();
+      if (!raw) return null;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : null;
+    };
+
+    const formatAmountValue = (value) => {
+      if (!Number.isFinite(value)) return '';
+      const fixed = value.toFixed(2);
+      return fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+    };
+
     const assignRowKey = (row) => {
       if (!row) return;
       if (!row.dataset.itemKey) {
@@ -1868,8 +2191,11 @@ function openNewDialog() {
       row.setAttribute("data-item-row", "");
       assignRowKey(row);
       row.innerHTML = `
-        <td><input type="checkbox" data-item-select /></td>
-        <td><input type="number" name="itemNo" data-item-input data-item-no required readonly tabindex="-1" aria-readonly="true" /></td>
+        <td class="item-cell-select"><input type="checkbox" data-item-select aria-label="행 선택" /></td>
+        <td class="item-cell-no">
+          <span data-item-no-display>1</span>
+          <input type="hidden" name="itemNo" data-item-input data-item-no />
+        </td>
         <td><input type="text" name="itemName" data-item-input required placeholder="예: 품명" /></td>
         <td><input type="text" name="itemCategory" data-item-input required placeholder="예: 품목구분" /></td>
         <td><input type="number" name="itemQuantity" data-item-input required min="0" step="1" placeholder="예: 10" /></td>
@@ -1879,7 +2205,21 @@ function openNewDialog() {
           </select>
         </td>
         <td><input type="number" name="itemUnitPrice" data-item-input required min="0" step="0.01" placeholder="예: 1200" /></td>
-        <td><input type="number" name="itemTotal" data-item-input required min="0" step="0.01" placeholder="예: 12000" /></td>
+        <td>
+          <input
+            type="number"
+            name="itemTotal"
+            data-item-input
+            data-item-total
+            required
+            min="0"
+            step="0.01"
+            placeholder="예: 12000"
+            readonly
+            aria-readonly="true"
+            tabindex="-1"
+          />
+        </td>
         <td>
           <div class="item-origin-field">
             <select name="itemOrigin" data-item-input required data-item-origin-select>
@@ -1921,6 +2261,21 @@ function openNewDialog() {
       syncOriginField();
     };
 
+    const updateRowTotal = (row) => {
+      const quantityInput = row.querySelector('input[name="itemQuantity"]');
+      const unitPriceInput = row.querySelector('input[name="itemUnitPrice"]');
+      const totalInput = row.querySelector('input[name="itemTotal"]');
+      if (!(totalInput instanceof HTMLInputElement)) return;
+      const quantityValue = getNumericValue(quantityInput);
+      const unitPriceValue = getNumericValue(unitPriceInput);
+      if (quantityValue === null || unitPriceValue === null) {
+        totalInput.value = '';
+        return;
+      }
+      const total = Math.round(quantityValue * unitPriceValue * 100) / 100;
+      totalInput.value = formatAmountValue(total);
+    };
+
     const updateItemSummary = () => {
       if (!(itemQtySumEl instanceof HTMLElement) || !(itemTotalSumEl instanceof HTMLElement)) return;
       const rows = $$('[data-item-row]', itemRows);
@@ -1929,12 +2284,13 @@ function openNewDialog() {
       rows.forEach((row) => {
         const qtyInput = row.querySelector('input[name="itemQuantity"]');
         const totalInput = row.querySelector('input[name="itemTotal"]');
-        const qtyValue = qtyInput instanceof HTMLInputElement ? Number(qtyInput.value) : NaN;
-        const totalValue = totalInput instanceof HTMLInputElement ? Number(totalInput.value) : NaN;
-        if (Number.isFinite(qtyValue)) {
+        updateRowTotal(row);
+        const qtyValue = getNumericValue(qtyInput);
+        const totalValue = getNumericValue(totalInput);
+        if (qtyValue !== null) {
           quantitySum += qtyValue;
         }
-        if (Number.isFinite(totalValue)) {
+        if (totalValue !== null) {
           amountSum += totalValue;
         }
       });
@@ -1946,9 +2302,16 @@ function openNewDialog() {
     };
 
     const updateRowNumbers = () => {
-      const numberInputs = $$('input[name="itemNo"]', itemRows);
-      numberInputs.forEach((input, idx) => {
-        input.value = String(idx + 1);
+      const rows = $$('[data-item-row]', itemRows);
+      rows.forEach((row, idx) => {
+        const display = row.querySelector('[data-item-no-display]');
+        if (display) {
+          display.textContent = String(idx + 1);
+        }
+        const hiddenInput = row.querySelector('input[name="itemNo"]');
+        if (hiddenInput instanceof HTMLInputElement) {
+          hiddenInput.value = String(idx + 1);
+        }
       });
     };
 
@@ -1957,6 +2320,7 @@ function openNewDialog() {
       itemRows.appendChild(row);
       setupOriginField(row);
       updateRowNumbers();
+      updateRowTotal(row);
       updateItemSummary();
       updateStepActionState();
     };
@@ -1990,7 +2354,12 @@ function openNewDialog() {
       removeItemButton?.addEventListener("click", () => {
         removeSelectedRows();
       });
-      const handleItemChange = () => {
+      const handleItemChange = (event) => {
+        const target = event.target;
+        const row = target instanceof HTMLElement ? target.closest('[data-item-row]') : null;
+        if (row) {
+          updateRowTotal(row);
+        }
         updateItemSummary();
         updateStepActionState();
       };
@@ -2648,6 +3017,7 @@ function openNewDialog() {
   setupSimpleCountrySelects();
   setupNotifyCopy();
   setupTransportModeField();
+  setupInlineCalendar();
   setupIncotermsField();
   setupItemTable();
   setupPackingStep();
