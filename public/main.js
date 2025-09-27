@@ -1102,12 +1102,33 @@ function openNewDialog() {
 
     if (stepEl.hasAttribute("data-packing-step")) {
       const packingState = form._packingState;
-      if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
+      const boxes = Array.isArray(packingState?.boxes) ? packingState.boxes : [];
+      if (!boxes.length) {
         return false;
       }
-      const hasValidStructure = packingState.packings.every((packing) => Array.isArray(packing.itemKeys));
-      if (!hasValidStructure) {
-        return false;
+      if (typeof packingState?.canComplete === 'function') {
+        if (!packingState.canComplete()) {
+          return false;
+        }
+      } else {
+        const items = Array.isArray(packingState?.items) ? packingState.items : [];
+        const remainders =
+          typeof packingState?.getRemainders === 'function'
+            ? packingState.getRemainders()
+            : new Map(items.map((item) => [item.id ?? item.key, Number(item?.totalQty ?? item?.quantity ?? 0)]));
+        const hasPositiveItems = items.some((item) => Number(item?.totalQty ?? item?.quantity ?? 0) > 0);
+        if (!hasPositiveItems) {
+          return false;
+        }
+        for (const item of items) {
+          const total = Number(item?.totalQty ?? item?.quantity ?? 0);
+          if (!Number.isFinite(total) || total <= 0) continue;
+          const key = item.id ?? item.key;
+          const remain = key != null ? remainders.get(key) : undefined;
+          if ((remain ?? total) > 0) {
+            return false;
+          }
+        }
       }
     }
 
@@ -2444,35 +2465,56 @@ function openNewDialog() {
     if (!packingStep) return;
 
     const state = form._packingState || {};
-    if (!Array.isArray(state.packings)) {
-      state.packings = [];
-    }
-    if (!(state.selection instanceof Set)) {
-      state.selection = new Set(state.selection ? Array.from(state.selection) : []);
+    if (!Array.isArray(state.boxes)) {
+      state.boxes = [];
     }
     if (!Array.isArray(state.items)) {
       state.items = [];
     }
+    if (!(state.remainders instanceof Map)) {
+      state.remainders = new Map();
+    }
     if (typeof state.formOpen !== 'boolean') {
       state.formOpen = false;
     }
+    state.activeAssignment = state.activeAssignment || null;
+
+    state.boxes = state.boxes.map((box, index) => {
+      const boxId = box?.boxId || box?.id || `box-${index + 1}`;
+      const dimensions = {
+        L: Number(box?.dimensions?.L ?? box?.length) || 0,
+        W: Number(box?.dimensions?.W ?? box?.width) || 0,
+        H: Number(box?.dimensions?.H ?? box?.height) || 0,
+        CBM: Number(box?.dimensions?.CBM ?? box?.cbm) || 0,
+      };
+      const weightKg = Number(box?.weightKg ?? box?.weight) || 0;
+      const contents = Array.isArray(box?.contents)
+        ? box.contents
+            .map((content) => ({
+              itemId: content?.itemId || content?.key || content?.id || '',
+              qty: Math.max(0, Math.floor(Number(content?.qty) || 0)),
+            }))
+            .filter((content) => content.itemId)
+        : [];
+      return {
+        boxId,
+        name: box?.name || `Packing ${String(index + 1).padStart(2, '0')}`,
+        dimensions,
+        weightKg,
+        contents,
+      };
+    });
+
     form._packingState = state;
 
-    const dimensionFormatter = new Intl.NumberFormat('ko-KR', {
-      maximumFractionDigits: 2,
-      minimumFractionDigits: 0,
-    });
-    const quantityFormatter = new Intl.NumberFormat('ko-KR', {
-      maximumFractionDigits: 0,
-    });
-
+    const quantityFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
     const itemRowsRoot = form.querySelector('[data-item-rows]');
     const packingList = packingStep.querySelector('[data-packing-list]');
     const packingEmpty = packingStep.querySelector('[data-packing-empty]');
     const packingItemsBody = packingStep.querySelector('[data-packing-items-body]');
-    const selectAllCheckbox = packingStep.querySelector('[data-packing-select-all]');
-    const createButton = packingStep.querySelector('[data-packing-create]');
+    const packingItemsEmpty = packingStep.querySelector('[data-packing-items-empty]');
     const openButton = packingStep.querySelector('[data-packing-open]');
+    const createButton = packingStep.querySelector('[data-packing-create]');
     const panel = packingStep.querySelector('[data-packing-panel]');
     const closeButton = packingStep.querySelector('[data-packing-close]');
     const cancelButton = packingStep.querySelector('[data-packing-cancel]');
@@ -2482,252 +2524,289 @@ function openNewDialog() {
       width: packingStep.querySelector('[data-packing-field="width"]'),
       height: packingStep.querySelector('[data-packing-field="height"]'),
       cbm: packingStep.querySelector('[data-packing-field="cbm"]'),
+      weight: packingStep.querySelector('[data-packing-field="weight"]'),
+    };
+
+    const assignDialog = $('#packingAssignDialog');
+    const assignForm = assignDialog?.querySelector('[data-packing-assign-form]');
+    const assignSubtitle = assignDialog?.querySelector('[data-packing-assign-subtitle]');
+    const assignRemainLabel = assignDialog?.querySelector('[data-packing-assign-remain]');
+    const assignBoxSelect = assignDialog?.querySelector('[data-packing-assign-box]');
+    const assignQtyInput = assignDialog?.querySelector('[data-packing-assign-qty]');
+    const assignError = assignDialog?.querySelector('[data-packing-assign-error]');
+    const assignCancel = assignDialog?.querySelector('[data-packing-assign-cancel]');
+    const assignConfirm = assignDialog?.querySelector('[data-packing-assign-confirm]');
+
+    let draggingItemId = null;
+
+    const formatNumber = (value, decimals = 0) => {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return '0';
+      const formatter = new Intl.NumberFormat('ko-KR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
+      return formatter.format(numeric);
     };
 
     const ensureDefaultName = () => {
       if (!(inputs.name instanceof HTMLInputElement)) return;
-      if ((inputs.name.value ?? '').trim() === '') {
-        const nextIndex = state.packings.length + 1;
+      if ((inputs.name.value || '').trim() === '') {
+        const nextIndex = state.boxes.length + 1;
         inputs.name.value = `Packing ${String(nextIndex).padStart(2, '0')}`;
       }
     };
 
-    const getInputNumber = (input) => {
-      if (!(input instanceof HTMLInputElement)) return null;
+    const syncFormVisibility = () => {
+      if (!(panel instanceof HTMLElement)) return;
+      panel.hidden = !state.formOpen;
+      if (openButton instanceof HTMLButtonElement) {
+        openButton.hidden = state.formOpen;
+      }
+    };
+
+    const getNumericValue = (input) => {
+      if (!(input instanceof HTMLInputElement)) return 0;
       const value = Number(input.value);
-      return Number.isFinite(value) ? value : null;
-    };
-
-    const hasValidDimensions = () => {
-      const lengthValue = getInputNumber(inputs.length);
-      const widthValue = getInputNumber(inputs.width);
-      const heightValue = getInputNumber(inputs.height);
-      return (
-        Number.isFinite(lengthValue) &&
-        lengthValue > 0 &&
-        Number.isFinite(widthValue) &&
-        widthValue > 0 &&
-        Number.isFinite(heightValue) &&
-        heightValue > 0
-      );
-    };
-
-    const updateCreateButtonState = () => {
-      if (!(createButton instanceof HTMLButtonElement)) return;
-      createButton.disabled = !hasValidDimensions();
+      return Number.isFinite(value) && value >= 0 ? value : 0;
     };
 
     const gatherItems = () => {
       const rows = itemRowsRoot ? $$('[data-item-row]', itemRowsRoot) : [];
       return rows
         .map((row, index) => {
-          const key = row.dataset.itemKey || `row-${index}`;
+          const id = row.dataset.itemKey || `row-${index}`;
           const getValue = (selector) => {
             const el = row.querySelector(selector);
             return el && 'value' in el ? String(el.value).trim() : '';
           };
-          const quantityValue = Number(getValue('input[name="itemQuantity"]'));
+          const qtyValue = Number(getValue('input[name="itemQuantity"]'));
+          const totalQty = Number.isFinite(qtyValue) && qtyValue > 0 ? Math.floor(qtyValue) : 0;
+          const name = getValue('input[name="itemName"]');
+          const kind = getValue('input[name="itemCategory"]');
+          const no = getValue('input[name="itemNo"]');
+          if (!name && !kind && !no && totalQty <= 0) {
+            return null;
+          }
           return {
-            key,
-            no: getValue('input[name="itemNo"]'),
-            name: getValue('input[name="itemName"]'),
-            category: getValue('input[name="itemCategory"]'),
-            quantity: Number.isFinite(quantityValue) ? quantityValue : 0,
+            id,
+            no,
+            name,
+            kind,
+            totalQty,
           };
         })
-        .filter((item) => item.name || item.category || item.no);
+        .filter(Boolean);
     };
 
-    const updateSelectAllState = () => {
-      if (!(selectAllCheckbox instanceof HTMLInputElement)) return;
-      const total = state.items.length;
-      const selected = state.items.filter((item) => state.selection.has(item.key)).length;
-      selectAllCheckbox.disabled = total === 0;
-      selectAllCheckbox.checked = total > 0 && selected === total;
-      selectAllCheckbox.indeterminate = selected > 0 && selected < total;
-    };
-
-    const renderPackings = () => {
-      if (!(packingList instanceof HTMLElement)) return;
-      const itemsMap = new Map(state.items.map((item) => [item.key, item]));
-      state.packings.forEach((packing) => {
-        packing.itemKeys = Array.isArray(packing.itemKeys)
-          ? packing.itemKeys.filter((key) => itemsMap.has(key))
-          : [];
+    const syncItemsFromForm = () => {
+      state.items = gatherItems();
+      const itemMap = new Map(state.items.map((item) => [item.id, item]));
+      const remainingMap = new Map(state.items.map((item) => [item.id, item.totalQty]));
+      state.boxes.forEach((box) => {
+        const nextContents = [];
+        box.contents = Array.isArray(box.contents) ? box.contents : [];
+        box.contents.forEach((content) => {
+          const item = itemMap.get(content.itemId);
+          if (!item) return;
+          const currentRemaining = remainingMap.get(content.itemId) ?? 0;
+          const qty = Math.max(0, Math.min(Math.floor(Number(content.qty) || 0), currentRemaining));
+          if (qty > 0) {
+            nextContents.push({ itemId: content.itemId, qty });
+            remainingMap.set(content.itemId, currentRemaining - qty);
+          }
+        });
+        box.contents = nextContents;
       });
-      if (packingEmpty instanceof HTMLElement) {
-        packingEmpty.hidden = state.packings.length > 0;
+    };
+
+    const computeRemainders = () => {
+      const remainders = new Map(state.items.map((item) => [item.id, item.totalQty]));
+      state.boxes.forEach((box) => {
+        (box.contents || []).forEach((content) => {
+          if (!remainders.has(content.itemId)) return;
+          const current = remainders.get(content.itemId) ?? 0;
+          const nextValue = Math.max(0, current - Math.max(0, Math.floor(Number(content.qty) || 0)));
+          remainders.set(content.itemId, nextValue);
+        });
+      });
+      return remainders;
+    };
+
+    const hasItemsToPack = () => state.items.some((item) => item.totalQty > 0);
+
+    const canCompletePacking = () => {
+      if (!state.boxes.length) return false;
+      if (!hasItemsToPack()) return false;
+      return state.items.every((item) => {
+        if (item.totalQty <= 0) return true;
+        const remain = state.remainders.get(item.id) ?? item.totalQty;
+        return remain === 0;
+      });
+    };
+
+    const updateCompletionHint = () => {
+      if (!(completeButton instanceof HTMLButtonElement)) return;
+      let reason = '';
+      if (!state.boxes.length) {
+        reason = '먼저 패킹을 추가해 주세요.';
+      } else if (!hasItemsToPack()) {
+        reason = '팩킹할 품목의 수량을 입력해주세요.';
+      } else if (!canCompletePacking()) {
+        reason = '잔량이 남아 있어 완료할 수 없습니다.';
       }
-      if (!state.packings.length) {
+      if (reason) {
+        completeButton.title = reason;
+        completeButton.dataset.packingReason = reason;
+      } else {
+        completeButton.removeAttribute('title');
+        delete completeButton.dataset.packingReason;
+      }
+    };
+
+    const updateItemsEmptyState = () => {
+      if (!(packingItemsEmpty instanceof HTMLElement)) return;
+      packingItemsEmpty.hidden = state.items.length > 0;
+    };
+
+    const renderItemTable = () => {
+      if (!(packingItemsBody instanceof HTMLElement)) return;
+      updateItemsEmptyState();
+      if (!state.items.length) {
+        packingItemsBody.innerHTML = '';
+        return;
+      }
+      const hasBoxes = state.boxes.length > 0;
+      const rowsHtml = state.items
+        .map((item) => {
+          const remain = state.remainders.get(item.id) ?? item.totalQty;
+          const disabled = remain <= 0;
+          const dragHandle = `<span class=\"packing-item-handle\"${disabled ? ' aria-hidden=\"true\"' : ''}>⋮⋮</span>`;
+          const assignDisabled = disabled || !hasBoxes;
+          const assignButton = `<button type=\"button\" class=\"btn\" data-packing-item-assign data-item-id=\"${escapeHtml(
+            item.id
+          )}\"${assignDisabled ? ' disabled' : ''}>배정</button>`;
+          const kindLabel = item.kind ? `<span class=\"packing-item-kind\">${escapeHtml(item.kind)}</span>` : '';
+          return `
+        <tr class=\"packing-item-row\" data-packing-item-row data-item-id=\"${escapeHtml(item.id)}\"${
+            disabled ? ' data-disabled=\"true\"' : ''
+          }>
+          <td>${dragHandle}${escapeHtml(item.no || '')}</td>
+          <td><span class=\"packing-item-name\">${escapeHtml(item.name || '-')}</span>${kindLabel}</td>
+          <td>${escapeHtml(item.kind || '-')}</td>
+          <td class=\"packing-item-qty\">${escapeHtml(quantityFormatter.format(item.totalQty))}</td>
+          <td><span class=\"packing-item-remainder\">${escapeHtml(quantityFormatter.format(remain))}</span></td>
+          <td class=\"packing-item-actions\">${assignButton}</td>
+        </tr>
+      `;
+        })
+        .join('');
+      packingItemsBody.innerHTML = rowsHtml;
+      const rows = $$('[data-packing-item-row]', packingItemsBody);
+      rows.forEach((row) => {
+        const disabled = row.dataset.disabled === 'true';
+        row.draggable = !disabled;
+      });
+    };
+
+    const formatMetaTag = (label, value, { decimals = 0, unit = '' } = {}) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        const suffix = unit ? ` ${unit}` : '';
+        return `<span class=\"packing-card-tag\">${escapeHtml(label)} ${escapeHtml(
+          formatNumber(numeric, decimals) + suffix
+        )}</span>`;
+      }
+      return `<span class=\"packing-card-tag\" data-empty=\"true\">${escapeHtml(label)} 미입력</span>`;
+    };
+
+    const renderBoxes = () => {
+      if (!(packingList instanceof HTMLElement)) return;
+      const itemsMap = new Map(state.items.map((item) => [item.id, item]));
+      if (packingEmpty instanceof HTMLElement) {
+        packingEmpty.hidden = state.boxes.length > 0;
+      }
+      if (!state.boxes.length) {
         packingList.innerHTML = '';
         return;
       }
-      packingList.innerHTML = state.packings
-        .map((packing) => {
-          const items = packing.itemKeys.map((key) => itemsMap.get(key)).filter(Boolean);
-          const totalQuantity = items.reduce((sum, item) => {
-            const quantity = Number(item?.quantity ?? 0);
-            return sum + (Number.isFinite(quantity) ? quantity : 0);
-          }, 0);
-          const dimensionTags = [
-            { label: 'L', value: packing.length },
-            { label: 'W', value: packing.width },
-            { label: 'H', value: packing.height },
-          ]
-            .filter((dim) => Number.isFinite(dim.value))
-            .map((dim) => `<span>${escapeHtml(dim.label)} ${escapeHtml(dimensionFormatter.format(dim.value))}</span>`)
+      packingList.innerHTML = state.boxes
+        .map((box) => {
+          const contents = Array.isArray(box.contents) ? box.contents : [];
+          const normalizedContents = contents
+            .map((content) => {
+              const item = itemsMap.get(content.itemId);
+              const qty = Math.max(0, Math.floor(Number(content.qty) || 0));
+              return item ? { item, qty } : null;
+            })
+            .filter(Boolean);
+          const totalQty = normalizedContents.reduce((sum, entry) => sum + entry.qty, 0);
+          const itemCount = normalizedContents.length;
+          const metaTags = [
+            formatMetaTag('L', box.dimensions?.L ?? 0, { decimals: 2, unit: 'cm' }),
+            formatMetaTag('W', box.dimensions?.W ?? 0, { decimals: 2, unit: 'cm' }),
+            formatMetaTag('H', box.dimensions?.H ?? 0, { decimals: 2, unit: 'cm' }),
+            formatMetaTag('CBM', box.dimensions?.CBM ?? 0, { decimals: 3 }),
+            formatMetaTag('무게', box.weightKg ?? 0, { decimals: 2, unit: 'kg' }),
+          ].join('');
+          const contentsHtml = normalizedContents
+            .map(({ item, qty }) => {
+              const kindMeta = item.kind ? `<span class=\"packing-card-item-meta\">${escapeHtml(item.kind)}</span>` : '';
+              return `
+          <li class=\"packing-card-item\" data-box-item data-box-id=\"${escapeHtml(box.boxId)}\" data-item-id=\"${escapeHtml(
+                item.id
+              )}\">
+            <div>
+              <div class=\"packing-card-item-name\">${escapeHtml(item.name || '-')}</div>
+              ${kindMeta}
+            </div>
+            <div class=\"packing-card-item-right\">
+              <span class=\"packing-card-item-qty\">${escapeHtml(quantityFormatter.format(qty))}</span>
+              <div class=\"packing-card-item-actions\">
+                <button type=\"button\" class=\"icon-btn\" data-box-content-edit data-box-id=\"${escapeHtml(
+                  box.boxId
+                )}\" data-item-id=\"${escapeHtml(item.id)}\" aria-label=\"수량 편집\">✎</button>
+                <button type=\"button\" class=\"icon-btn\" data-box-content-remove data-box-id=\"${escapeHtml(
+                  box.boxId
+                )}\" data-item-id=\"${escapeHtml(item.id)}\" aria-label=\"배정 삭제\">🗑</button>
+              </div>
+            </div>
+          </li>
+        `;
+            })
             .join('');
-          const cbmTag = Number.isFinite(packing.cbm)
-            ? `<span>CBM ${escapeHtml(packing.cbm.toFixed(3))}</span>`
-            : '';
-          const itemsList = items.length
-            ? items
-                .map((item) => {
-                  const name = item?.name ? escapeHtml(item.name) : '-';
-                  const category = item?.category ? ` (${escapeHtml(item.category)})` : '';
-                  const quantityText = escapeHtml(quantityFormatter.format(Number(item?.quantity ?? 0)));
-                  return `<li><span>${name}${category}</span><span>${quantityText}</span></li>`;
-                })
-                .join('')
-            : '<li><span>품목 없음</span><span>-</span></li>';
           return `
-            <li class="packing-card">
-              <button type="button" class="packing-card-delete" data-packing-delete data-packing-id="${escapeHtml(
-                packing.id
-              )}" aria-label="팩킹 삭제">✕</button>
-              <div class="packing-card-title">${escapeHtml(packing.name)}</div>
-              <div class="packing-card-meta">${dimensionTags}${cbmTag}</div>
-              <div class="packing-card-summary">
-                <span>품목 ${escapeHtml(String(items.length))}개</span>
-                <span>총 수량 ${escapeHtml(quantityFormatter.format(totalQuantity))}</span>
-              </div>
-              <div class="packing-card-details">
-                <h5>${escapeHtml(packing.name)} 내용</h5>
-                <ul>${itemsList}</ul>
-              </div>
-            </li>
-          `;
+        <li class=\"packing-card\" data-box-id=\"${escapeHtml(box.boxId)}\" data-empty=\"${
+            normalizedContents.length ? 'false' : 'true'
+          }\">
+          <button type=\"button\" class=\"packing-card-delete\" data-packing-delete data-box-id=\"${escapeHtml(
+            box.boxId
+          )}\" aria-label=\"패킹 삭제\">✕</button>
+          <div class=\"packing-card-title\">${escapeHtml(box.name)}</div>
+          <div class=\"packing-card-meta\">${metaTags}</div>
+          <div class=\"packing-card-summary\">
+            <span>품목 ${escapeHtml(String(itemCount))}개</span>
+            <span>총 수량 ${escapeHtml(quantityFormatter.format(totalQty))}</span>
+          </div>
+          <p class=\"packing-card-empty\">담긴 품목 없음</p>
+          <ul class=\"packing-card-contents\">${contentsHtml}</ul>
+        </li>
+      `;
         })
         .join('');
     };
 
-    const renderItemTable = () => {
-      state.items = gatherItems();
-      const validKeys = new Set(state.items.map((item) => item.key));
-      state.selection = new Set([...state.selection].filter((key) => validKeys.has(key)));
-      if (!(packingItemsBody instanceof HTMLElement)) {
-        updateSelectAllState();
-        renderPackings();
-        updateStepActionState();
-        return;
+    const rerender = ({ updateItems = false } = {}) => {
+      if (updateItems) {
+        syncItemsFromForm();
       }
-      const rowsHtml = state.items.length
-        ? state.items
-            .map(
-              (item) => `
-                <tr data-packing-item-row data-item-key="${escapeHtml(item.key)}">
-                  <td class="text-center">
-                    <input type="checkbox" data-packing-item-checkbox data-item-key="${escapeHtml(item.key)}"${
-                      state.selection.has(item.key) ? ' checked' : ''
-                    } />
-                  </td>
-                  <td>${escapeHtml(item.no || '-')}</td>
-                  <td>${escapeHtml(item.name || '-')}</td>
-                  <td>${escapeHtml(item.category || '-')}</td>
-                  <td class="text-right">${escapeHtml(quantityFormatter.format(Number(item.quantity ?? 0)))}</td>
-                </tr>
-              `
-            )
-            .join('')
-        : '<tr><td colspan="5" class="packing-items-empty">품목정보 단계에서 입력한 품목이 없습니다.</td></tr>';
-      packingItemsBody.innerHTML = rowsHtml;
-      updateSelectAllState();
-      renderPackings();
+      state.remainders = computeRemainders();
+      state.getRemainders = () => new Map(state.remainders);
+      state.canComplete = () => canCompletePacking();
+      renderBoxes();
+      renderItemTable();
+      updateCompletionHint();
       updateStepActionState();
-    };
-
-    const updateCbmFromDimensions = () => {
-      if (!(inputs.cbm instanceof HTMLInputElement)) return;
-      const lengthValue = getInputNumber(inputs.length);
-      const widthValue = getInputNumber(inputs.width);
-      const heightValue = getInputNumber(inputs.height);
-      if (inputs.cbm.dataset.manual === 'true') {
-        return;
-      }
-      if (
-        Number.isFinite(lengthValue) &&
-        Number.isFinite(widthValue) &&
-        Number.isFinite(heightValue)
-      ) {
-        const cbmValue = (lengthValue * widthValue * heightValue) / 1_000_000;
-        if (Number.isFinite(cbmValue)) {
-          inputs.cbm.value = cbmValue === 0 ? '0' : cbmValue.toFixed(3);
-        } else {
-          inputs.cbm.value = '';
-        }
-      } else {
-        inputs.cbm.value = '';
-      }
-    };
-
-    const resetDimensionFields = () => {
-      if (inputs.length instanceof HTMLInputElement) inputs.length.value = '';
-      if (inputs.width instanceof HTMLInputElement) inputs.width.value = '';
-      if (inputs.height instanceof HTMLInputElement) inputs.height.value = '';
-      if (inputs.cbm instanceof HTMLInputElement) {
-        inputs.cbm.value = '';
-        delete inputs.cbm.dataset.manual;
-      }
-      updateCreateButtonState();
-    };
-
-    const openForm = ({ focusInput = true } = {}) => {
-      if (state.formOpen) {
-        if (focusInput && inputs.name instanceof HTMLInputElement) {
-          inputs.name.focus();
-          inputs.name.select();
-        }
-        return;
-      }
-      state.formOpen = true;
-      if (panel instanceof HTMLElement) {
-        panel.hidden = false;
-      }
-      if (openButton instanceof HTMLButtonElement) {
-        openButton.hidden = true;
-      }
-      ensureDefaultName();
-      if (focusInput && inputs.name instanceof HTMLInputElement) {
-        inputs.name.focus();
-        inputs.name.select();
-      }
-    };
-
-    const closeForm = ({ resetFields = false, focusTrigger = false } = {}) => {
-      state.formOpen = false;
-      if (panel instanceof HTMLElement) {
-        panel.hidden = true;
-      }
-      if (openButton instanceof HTMLButtonElement) {
-        openButton.hidden = false;
-        if (focusTrigger) {
-          window.requestAnimationFrame(() => openButton.focus());
-        }
-      }
-      if (resetFields) {
-        if (inputs.name instanceof HTMLInputElement) {
-          inputs.name.value = '';
-        }
-        resetDimensionFields();
-      }
-    };
-
-    const syncFormVisibility = () => {
-      if (state.formOpen) {
-        openForm({ focusInput: false });
-      } else {
-        closeForm({ resetFields: false, focusTrigger: false });
-      }
     };
 
     const applyVisibility = (isActive) => {
@@ -2740,108 +2819,291 @@ function openNewDialog() {
       if (typeof packingStep.toggleAttribute === 'function') {
         packingStep.toggleAttribute('inert', !isActive);
       }
-      if (isActive) {
-        syncFormVisibility();
-      } else {
-        if (panel instanceof HTMLElement) {
-          panel.hidden = true;
-        }
-        if (openButton instanceof HTMLButtonElement) {
-          openButton.hidden = false;
-        }
+    };
+
+    const openForm = ({ focusInput = true } = {}) => {
+      state.formOpen = true;
+      syncFormVisibility();
+      ensureDefaultName();
+      if (focusInput && inputs.name instanceof HTMLInputElement) {
+        inputs.name.focus();
+      }
+    };
+
+    const closeForm = ({ resetFields = false, focusTrigger = false } = {}) => {
+      state.formOpen = false;
+      if (resetFields) {
+        Object.values(inputs).forEach((input) => {
+          if (input instanceof HTMLInputElement) {
+            input.value = '';
+          }
+        });
+      }
+      syncFormVisibility();
+      ensureDefaultName();
+      if (focusTrigger && openButton instanceof HTMLButtonElement) {
+        openButton.focus();
       }
     };
 
     const handleCreate = () => {
-      if (!(inputs.name instanceof HTMLInputElement)) return;
-      const name = inputs.name.value.trim();
-      if (!name) {
-        alert('팩킹명을 입력해주세요.');
-        inputs.name.focus();
-        return;
-      }
-      const lengthValue = getInputNumber(inputs.length);
-      if (!Number.isFinite(lengthValue) || lengthValue <= 0) {
-        alert('Length 값을 입력해주세요.');
-        inputs.length?.focus();
-        return;
-      }
-      const widthValue = getInputNumber(inputs.width);
-      if (!Number.isFinite(widthValue) || widthValue <= 0) {
-        alert('Width 값을 입력해주세요.');
-        inputs.width?.focus();
-        return;
-      }
-      const heightValue = getInputNumber(inputs.height);
-      if (!Number.isFinite(heightValue) || heightValue <= 0) {
-        alert('Height 값을 입력해주세요.');
-        inputs.height?.focus();
-        return;
-      }
-      const selectedItems = state.items.filter((item) => state.selection.has(item.key));
-      const cbmInputValue = getInputNumber(inputs.cbm);
-      const computedCbm = (lengthValue * widthValue * heightValue) / 1_000_000;
-      const cbmValue = Number.isFinite(cbmInputValue) ? cbmInputValue : computedCbm;
-      const packing = {
-        id: `packing-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        name,
-        length: lengthValue,
-        width: widthValue,
-        height: heightValue,
-        cbm: Number.isFinite(cbmValue) ? Number(cbmValue) : null,
-        itemKeys: selectedItems.map((item) => item.key),
+      const nameValue = inputs.name instanceof HTMLInputElement ? inputs.name.value.trim() : '';
+      const box = {
+        boxId: `box-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: nameValue || `Packing ${String(state.boxes.length + 1).padStart(2, '0')}`,
+        dimensions: {
+          L: getNumericValue(inputs.length),
+          W: getNumericValue(inputs.width),
+          H: getNumericValue(inputs.height),
+          CBM: getNumericValue(inputs.cbm),
+        },
+        weightKg: getNumericValue(inputs.weight),
+        contents: [],
       };
-      state.packings.push(packing);
-      state.selection.clear();
-      if (inputs.name instanceof HTMLInputElement) {
-        inputs.name.value = '';
-      }
-      resetDimensionFields();
-      renderItemTable();
-      renderPackings();
+      state.boxes.push(box);
+      closeForm({ resetFields: true, focusTrigger: true });
       ensureDefaultName();
-      updateStepActionState();
+      rerender();
     };
 
-    const handleDelete = (id) => {
-      if (!id) return;
-      state.packings = state.packings.filter((packing) => packing.id !== id);
-      renderPackings();
+    const handleDeleteBox = (boxId) => {
+      if (!boxId) return;
+      if (!window.confirm('해당 패킹을 삭제하시겠습니까?')) return;
+      state.boxes = state.boxes.filter((box) => box.boxId !== boxId);
+      rerender();
       ensureDefaultName();
-      updateStepActionState();
+    };
+
+    const handleRemoveContent = (boxId, itemId) => {
+      if (!boxId || !itemId) return;
+      const box = state.boxes.find((entry) => entry.boxId === boxId);
+      if (!box) return;
+      box.contents = box.contents.filter((content) => content.itemId !== itemId);
+      rerender();
+    };
+
+    const clearDroppableState = () => {
+      if (!(packingList instanceof HTMLElement)) return;
+      $$('[data-box-id]', packingList).forEach((card) => card.removeAttribute('data-droppable'));
+    };
+
+    const closeAssignDialog = () => {
+      state.activeAssignment = null;
+      if (assignDialog instanceof HTMLDialogElement && assignDialog.open) {
+        assignDialog.close();
+      }
+    };
+
+    const openAssignDialog = ({ itemId, boxId = null, mode = 'create' }) => {
+      if (!(assignDialog instanceof HTMLDialogElement)) return;
+      const item = state.items.find((entry) => entry.id === itemId);
+      if (!item) {
+        alert('존재하지 않는 품목입니다.');
+        return;
+      }
+      if (!state.boxes.length) {
+        alert('먼저 패킹을 추가해 주세요.');
+        return;
+      }
+      const baseRemain = state.remainders.get(itemId) ?? item.totalQty;
+      let targetBoxId = boxId || (state.boxes[0]?.boxId ?? '');
+      let currentQty = 0;
+      if (mode === 'edit') {
+        const box = state.boxes.find((entry) => entry.boxId === targetBoxId);
+        const content = box?.contents.find((entry) => entry.itemId === itemId);
+        if (!box || !content) {
+          alert('배정 정보를 찾을 수 없습니다.');
+          return;
+        }
+        targetBoxId = box.boxId;
+        currentQty = Math.max(0, Math.floor(Number(content.qty) || 0));
+      }
+      const available = mode === 'edit' ? baseRemain + currentQty : baseRemain;
+      if (available <= 0) {
+        alert('이 품목은 이미 모두 배정되었습니다.');
+        return;
+      }
+      if (assignSubtitle instanceof HTMLElement) {
+        const parts = [item.name, item.kind ? `(${item.kind})` : ''].filter(Boolean);
+        assignSubtitle.textContent = parts.length ? parts.join(' ') : '품목 배정';
+      }
+      if (assignRemainLabel instanceof HTMLElement) {
+        assignRemainLabel.textContent = quantityFormatter.format(available);
+      }
+      if (assignError instanceof HTMLElement) {
+        assignError.textContent = '';
+      }
+      if (assignConfirm instanceof HTMLButtonElement) {
+        assignConfirm.textContent = mode === 'edit' ? '변경' : '배정';
+      }
+      if (assignBoxSelect instanceof HTMLSelectElement) {
+        assignBoxSelect.innerHTML = state.boxes
+          .map((box) => `<option value=\"${escapeHtml(box.boxId)}\">${escapeHtml(box.name)}</option>`)
+          .join('');
+        assignBoxSelect.disabled = mode === 'edit';
+        assignBoxSelect.value = targetBoxId;
+      }
+      if (assignQtyInput instanceof HTMLInputElement) {
+        const defaultQty = mode === 'edit' ? currentQty : 1;
+        assignQtyInput.value = String(Math.max(1, Math.min(defaultQty || 1, available)));
+        assignQtyInput.min = '1';
+        assignQtyInput.max = String(available);
+      }
+      state.activeAssignment = {
+        mode,
+        itemId,
+        boxId: targetBoxId,
+        available,
+      };
+      assignDialog.showModal();
+      if (assignQtyInput instanceof HTMLInputElement) {
+        window.requestAnimationFrame(() => assignQtyInput.select());
+      }
+    };
+
+    const handleAssignSubmit = (event) => {
+      event.preventDefault();
+      if (!state.activeAssignment) {
+        closeAssignDialog();
+        return;
+      }
+      if (!(assignQtyInput instanceof HTMLInputElement) || !(assignBoxSelect instanceof HTMLSelectElement)) {
+        closeAssignDialog();
+        return;
+      }
+      const mode = state.activeAssignment.mode;
+      const targetBoxId = mode === 'edit' ? state.activeAssignment.boxId : assignBoxSelect.value;
+      if (!targetBoxId) {
+        if (assignError instanceof HTMLElement) {
+          assignError.textContent = '배정할 박스를 선택해주세요.';
+        }
+        return;
+      }
+      const rawQty = Number(assignQtyInput.value);
+      const qty = Math.floor(rawQty);
+      if (!Number.isFinite(qty) || qty < 1 || qty > state.activeAssignment.available) {
+        if (assignError instanceof HTMLElement) {
+          assignError.textContent = `수량이 올바르지 않습니다. 1 이상, 잔량 ${quantityFormatter.format(
+            state.activeAssignment.available
+          )} 이하로 입력하세요.`;
+        }
+        return;
+      }
+      const box = state.boxes.find((entry) => entry.boxId === targetBoxId);
+      if (!box) {
+        if (assignError instanceof HTMLElement) {
+          assignError.textContent = '존재하지 않는 박스입니다.';
+        }
+        return;
+      }
+      if (mode === 'edit') {
+        const content = box.contents.find((entry) => entry.itemId === state.activeAssignment.itemId);
+        if (!content) {
+          if (assignError instanceof HTMLElement) {
+            assignError.textContent = '배정 정보를 찾을 수 없습니다.';
+          }
+          return;
+        }
+        content.qty = qty;
+      } else {
+        const remainder = state.remainders.get(state.activeAssignment.itemId) ?? 0;
+        if (qty > remainder) {
+          if (assignError instanceof HTMLElement) {
+            assignError.textContent = `수량이 올바르지 않습니다. 1 이상, 잔량 ${quantityFormatter.format(
+              remainder
+            )} 이하로 입력하세요.`;
+          }
+          return;
+        }
+        const existing = box.contents.find((entry) => entry.itemId === state.activeAssignment.itemId);
+        if (existing) {
+          existing.qty += qty;
+        } else {
+          box.contents.push({ itemId: state.activeAssignment.itemId, qty });
+        }
+      }
+      closeAssignDialog();
+      rerender();
+    };
+
+    const handleAssignCancel = () => {
+      closeAssignDialog();
+    };
+
+    const handleDragStart = (event) => {
+      const row = event.target instanceof HTMLElement ? event.target.closest('[data-packing-item-row]') : null;
+      if (!(row instanceof HTMLElement)) return;
+      const itemId = row.dataset.itemId;
+      const disabled = row.dataset.disabled === 'true';
+      if (!itemId || disabled) {
+        event.preventDefault();
+        return;
+      }
+      draggingItemId = itemId;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', itemId);
+      }
+      packingStep.dataset.dragging = 'true';
+    };
+
+    const handleDragEnd = () => {
+      draggingItemId = null;
+      delete packingStep.dataset.dragging;
+      clearDroppableState();
+    };
+
+    const handleDragOver = (event) => {
+      if (!draggingItemId) return;
+      const card = event.target instanceof HTMLElement ? event.target.closest('[data-box-id]') : null;
+      if (!card) return;
+      const remainder = state.remainders.get(draggingItemId) ?? 0;
+      if (remainder <= 0) return;
+      event.preventDefault();
+      card.dataset.droppable = 'true';
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+    };
+
+    const handleDragLeave = (event) => {
+      const card = event.target instanceof HTMLElement ? event.target.closest('[data-box-id]') : null;
+      if (!card) return;
+      card.removeAttribute('data-droppable');
+    };
+
+    const handleDrop = (event) => {
+      if (!draggingItemId) return;
+      const card = event.target instanceof HTMLElement ? event.target.closest('[data-box-id]') : null;
+      if (!card) return;
+      event.preventDefault();
+      const boxId = card.dataset.boxId;
+      const remainder = state.remainders.get(draggingItemId) ?? 0;
+      handleDragEnd();
+      if (remainder <= 0) {
+        alert('이 품목은 이미 모두 배정되었습니다.');
+        return;
+      }
+      openAssignDialog({ itemId: draggingItemId, boxId, mode: 'create' });
+    };
+
+    const handleItemsChange = () => {
+      rerender({ updateItems: true });
+    };
+
+    const observeItems = () => {
+      if (!(itemRowsRoot instanceof HTMLElement)) return;
+      if (state.itemsObserver instanceof MutationObserver) {
+        state.itemsObserver.disconnect();
+      }
+      state.itemsObserver = new MutationObserver(() => rerender({ updateItems: true }));
+      state.itemsObserver.observe(itemRowsRoot, { childList: true });
     };
 
     if (!state.bound) {
       if (itemRowsRoot instanceof HTMLElement) {
-        const handleItemsChange = () => {
-          renderItemTable();
-        };
         itemRowsRoot.addEventListener('input', handleItemsChange);
         itemRowsRoot.addEventListener('change', handleItemsChange);
-      }
-      if (packingItemsBody instanceof HTMLElement) {
-        packingItemsBody.addEventListener('change', (event) => {
-          const checkbox = event.target.closest('[data-packing-item-checkbox]');
-          if (!(checkbox instanceof HTMLInputElement)) return;
-          const key = checkbox.dataset.itemKey;
-          if (!key) return;
-          if (checkbox.checked) {
-            state.selection.add(key);
-          } else {
-            state.selection.delete(key);
-          }
-          updateSelectAllState();
-        });
-      }
-      if (selectAllCheckbox instanceof HTMLInputElement) {
-        selectAllCheckbox.addEventListener('change', () => {
-          if (selectAllCheckbox.checked) {
-            state.selection = new Set(state.items.map((item) => item.key));
-          } else {
-            state.selection.clear();
-          }
-          renderItemTable();
-        });
       }
       if (createButton instanceof HTMLButtonElement) {
         createButton.addEventListener('click', handleCreate);
@@ -2852,65 +3114,112 @@ function openNewDialog() {
           openForm();
         });
       }
-      if (closeButton) {
+      if (closeButton instanceof HTMLButtonElement) {
         closeButton.addEventListener('click', (event) => {
           event.preventDefault();
           closeForm({ focusTrigger: true });
         });
       }
-      if (cancelButton) {
+      if (cancelButton instanceof HTMLButtonElement) {
         cancelButton.addEventListener('click', (event) => {
           event.preventDefault();
-          state.selection.clear();
-          renderItemTable();
           closeForm({ resetFields: true, focusTrigger: true });
         });
       }
+      if (packingItemsBody instanceof HTMLElement) {
+        packingItemsBody.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-packing-item-assign]');
+          if (!(button instanceof HTMLButtonElement)) return;
+          const itemId = button.dataset.itemId;
+          if (!itemId) return;
+          openAssignDialog({ itemId, mode: 'create' });
+        });
+        packingItemsBody.addEventListener('dragstart', handleDragStart);
+        packingItemsBody.addEventListener('dragend', handleDragEnd);
+      }
       if (packingList instanceof HTMLElement) {
         packingList.addEventListener('click', (event) => {
-          const button = event.target.closest('[data-packing-delete]');
-          if (!(button instanceof HTMLButtonElement)) return;
-          const packingId = button.dataset.packingId;
-          handleDelete(packingId);
+          const deleteButton = event.target.closest('[data-packing-delete]');
+          if (deleteButton instanceof HTMLButtonElement) {
+            handleDeleteBox(deleteButton.dataset.boxId);
+            return;
+          }
+          const editButton = event.target.closest('[data-box-content-edit]');
+          if (editButton instanceof HTMLButtonElement) {
+            openAssignDialog({
+              itemId: editButton.dataset.itemId || '',
+              boxId: editButton.dataset.boxId || '',
+              mode: 'edit',
+            });
+            return;
+          }
+          const removeButton = event.target.closest('[data-box-content-remove]');
+          if (removeButton instanceof HTMLButtonElement) {
+            if (window.confirm('해당 품목 배정을 삭제하시겠습니까?')) {
+              handleRemoveContent(removeButton.dataset.boxId || '', removeButton.dataset.itemId || '');
+            }
+          }
+        });
+        packingList.addEventListener('dragover', handleDragOver);
+        packingList.addEventListener('dragleave', handleDragLeave);
+        packingList.addEventListener('drop', handleDrop);
+      }
+      if (assignForm instanceof HTMLFormElement) {
+        assignForm.addEventListener('submit', handleAssignSubmit);
+      }
+      if (assignCancel instanceof HTMLButtonElement) {
+        assignCancel.addEventListener('click', handleAssignCancel);
+      }
+      if (assignDialog instanceof HTMLDialogElement) {
+        assignDialog.addEventListener('close', () => {
+          state.activeAssignment = null;
+          if (assignError instanceof HTMLElement) {
+            assignError.textContent = '';
+          }
         });
       }
-      if (inputs.cbm instanceof HTMLInputElement) {
-        inputs.cbm.addEventListener('input', () => {
-          inputs.cbm.dataset.manual = inputs.cbm.value ? 'true' : '';
+      if (assignBoxSelect instanceof HTMLSelectElement) {
+        assignBoxSelect.addEventListener('change', () => {
+          if (state.activeAssignment && state.activeAssignment.mode === 'create') {
+            state.activeAssignment.boxId = assignBoxSelect.value;
+          }
+          if (assignError instanceof HTMLElement) {
+            assignError.textContent = '';
+          }
         });
       }
-      [inputs.length, inputs.width, inputs.height].forEach((input) => {
-        if (input instanceof HTMLInputElement) {
-          input.addEventListener('input', () => {
-            updateCbmFromDimensions();
-            updateCreateButtonState();
-          });
-        }
-      });
+      if (assignQtyInput instanceof HTMLInputElement) {
+        const clearError = () => {
+          if (assignError instanceof HTMLElement) {
+            assignError.textContent = '';
+          }
+        };
+        assignQtyInput.addEventListener('input', clearError);
+        assignQtyInput.addEventListener('change', clearError);
+      }
       form.addEventListener('reset', () => {
         window.requestAnimationFrame(() => {
-          state.packings = [];
-          state.selection = new Set();
+          state.boxes = [];
           state.items = [];
-          closeForm({ resetFields: true });
-          renderItemTable();
-          renderPackings();
+          state.remainders = new Map();
+          state.activeAssignment = null;
+          state.formOpen = false;
+          syncFormVisibility();
+          closeAssignDialog();
+          rerender();
           ensureDefaultName();
-          updateCreateButtonState();
-          updateStepActionState();
         });
       });
       state.bound = true;
     }
 
+    observeItems();
+    syncFormVisibility();
+    ensureDefaultName();
+    rerender({ updateItems: true });
+
     state.openForm = (options) => openForm(options || {});
     state.closeForm = (options) => closeForm(options || {});
-
-    renderItemTable();
-    ensureDefaultName();
-    renderPackings();
-    updateCreateButtonState();
-    updateStepActionState();
 
     syncPackingVisibility = (isActive) => {
       applyVisibility(isActive);
@@ -2918,6 +3227,7 @@ function openNewDialog() {
 
     applyVisibility(currentStep === packingStepIndex);
   };
+
 
   const showStep = (index) => {
     currentStep = Math.max(0, Math.min(index, totalSteps - 1));
@@ -2992,30 +3302,53 @@ function openNewDialog() {
     }
     if (stepEl.hasAttribute("data-packing-step")) {
       const packingState = form._packingState;
-      if (!packingState || !Array.isArray(packingState.packings) || !packingState.packings.length) {
-        alert("최소 한 개 이상의 팩킹을 생성해주세요.");
+      const boxes = Array.isArray(packingState?.boxes) ? packingState.boxes : [];
+      if (!boxes.length) {
+        alert('먼저 패킹을 추가해 주세요.');
         if (packingState && typeof packingState.openForm === 'function') {
           packingState.openForm({ focusInput: false });
         }
-        const target = stepEl.querySelector('[data-packing-create]');
-        if (target instanceof HTMLElement) {
+        const target = stepEl.querySelector('[data-packing-open]') || stepEl.querySelector('[data-packing-create]');
+        if (target instanceof HTMLElement && typeof target.focus === 'function') {
           target.focus();
         }
         return false;
       }
-      const invalidPacking = packingState.packings.find(
-        (packing) => !Array.isArray(packing.itemKeys) || packing.itemKeys.length === 0
-      );
-      if (invalidPacking) {
-        alert("각 팩킹에 포함할 품목을 선택해주세요.");
-        if (packingState && typeof packingState.openForm === 'function') {
-          packingState.openForm({ focusInput: false });
+      if (typeof packingState?.canComplete === 'function') {
+        if (!packingState.canComplete()) {
+          alert('잔량이 남아 있습니다. 배정되지 않은 품목을 확인해 주세요.');
+          const focusRow = stepEl.querySelector('[data-packing-items-body] tr');
+          if (focusRow instanceof HTMLElement && typeof focusRow.focus === 'function') {
+            focusRow.focus();
+          }
+          return false;
         }
-        const target = stepEl.querySelector('[data-packing-create]');
-        if (target instanceof HTMLElement) {
-          target.focus();
+      } else {
+        const items = Array.isArray(packingState?.items) ? packingState.items : [];
+        const remainders =
+          typeof packingState?.getRemainders === 'function'
+            ? packingState.getRemainders()
+            : new Map(items.map((item) => [item.id ?? item.key, Number(item?.totalQty ?? item?.quantity ?? 0)]));
+        const hasPositiveItems = items.some((item) => Number(item?.totalQty ?? item?.quantity ?? 0) > 0);
+        if (!hasPositiveItems) {
+          alert('팩킹할 품목의 수량을 입력해주세요.');
+          return false;
         }
-        return false;
+        const remainingItem = items.find((item) => {
+          const total = Number(item?.totalQty ?? item?.quantity ?? 0);
+          if (!Number.isFinite(total) || total <= 0) return false;
+          const key = item.id ?? item.key;
+          const remain = key != null ? remainders.get(key) : undefined;
+          return (remain ?? total) > 0;
+        });
+        if (remainingItem) {
+          alert('잔량이 남아 있습니다. 배정되지 않은 품목을 확인해 주세요.');
+          const focusRow = stepEl.querySelector('[data-packing-items-body] tr');
+          if (focusRow instanceof HTMLElement && typeof focusRow.focus === 'function') {
+            focusRow.focus();
+          }
+          return false;
+        }
       }
     }
     return true;
