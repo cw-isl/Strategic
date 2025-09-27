@@ -2163,10 +2163,9 @@ function openNewDialog() {
     const itemSummaryContainer = itemsStep.querySelector('[data-item-summary]');
     const itemQtySumEl = itemsStep.querySelector('[data-item-qty-sum]');
     const itemTotalSumEl = itemsStep.querySelector('[data-item-total-sum]');
+    const itemTotalCurrencyEl = itemsStep.querySelector('[data-item-total-currency]');
     const qtyFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 0 });
     const amountFormatter = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 });
-    let draggingRow = null;
-    let dragOverRow = null;
 
     const getNumericValue = (input) => {
       if (!(input instanceof HTMLInputElement)) return null;
@@ -2190,14 +2189,31 @@ function openNewDialog() {
       }
     };
 
+    const getRowCurrency = (row) => {
+      if (!row) return '';
+      const select = row.querySelector('select[name="itemCurrency"]');
+      if (!(select instanceof HTMLSelectElement)) return '';
+      return (select.value || '').trim();
+    };
+
+    const updateRowCurrencyLabels = (row) => {
+      if (!row) return;
+      const currency = getRowCurrency(row) || '-';
+      const unitCurrency = row.querySelector('[data-item-unit-currency]');
+      const totalCurrency = row.querySelector('[data-item-total-currency]');
+      if (unitCurrency instanceof HTMLElement) {
+        unitCurrency.textContent = currency;
+      }
+      if (totalCurrency instanceof HTMLElement) {
+        totalCurrency.textContent = currency;
+      }
+    };
+
     const createRow = () => {
       const row = document.createElement("tr");
       row.setAttribute("data-item-row", "");
       assignRowKey(row);
       row.innerHTML = `
-        <td class="item-cell-drag">
-          <button type="button" class="item-row-handle" data-item-drag-handle aria-label="행 이동" draggable="true">↕</button>
-        </td>
         <td class="item-cell-select"><input type="checkbox" data-item-select aria-label="행 선택" /></td>
         <td class="item-cell-no">
           <span data-item-no-display>1</span>
@@ -2211,21 +2227,29 @@ function openNewDialog() {
             ${ITEM_CURRENCY_OPTIONS_HTML}
           </select>
         </td>
-        <td><input type="number" name="itemUnitPrice" data-item-input required min="0" step="0.01" placeholder="예: 1200" /></td>
         <td>
-          <input
-            type="number"
-            name="itemTotal"
-            data-item-input
-            data-item-total
-            required
-            min="0"
-            step="0.01"
-            placeholder="예: 12000"
-            readonly
-            aria-readonly="true"
-            tabindex="-1"
-          />
+          <div class="item-amount-field">
+            <input type="number" name="itemUnitPrice" data-item-input required min="0" step="0.01" placeholder="예: 1200" />
+            <span class="item-currency-label" data-item-unit-currency>-</span>
+          </div>
+        </td>
+        <td>
+          <div class="item-amount-field">
+            <input
+              type="number"
+              name="itemTotal"
+              data-item-input
+              data-item-total
+              required
+              min="0"
+              step="0.01"
+              placeholder="예: 12000"
+              readonly
+              aria-readonly="true"
+              tabindex="-1"
+            />
+            <span class="item-currency-label" data-item-total-currency>-</span>
+          </div>
         </td>
         <td>
           <div class="item-origin-field">
@@ -2269,6 +2293,7 @@ function openNewDialog() {
     };
 
     const updateRowTotal = (row) => {
+      updateRowCurrencyLabels(row);
       const quantityInput = row.querySelector('input[name="itemQuantity"]');
       const unitPriceInput = row.querySelector('input[name="itemUnitPrice"]');
       const totalInput = row.querySelector('input[name="itemTotal"]');
@@ -2288,6 +2313,7 @@ function openNewDialog() {
       const rows = $$('[data-item-row]', itemRows);
       let quantitySum = 0;
       let amountSum = 0;
+      const currencyCodes = new Set();
       rows.forEach((row) => {
         const qtyInput = row.querySelector('input[name="itemQuantity"]');
         const totalInput = row.querySelector('input[name="itemTotal"]');
@@ -2300,9 +2326,22 @@ function openNewDialog() {
         if (totalValue !== null) {
           amountSum += totalValue;
         }
+        const currency = getRowCurrency(row);
+        if (currency) {
+          currencyCodes.add(currency);
+        }
       });
       itemQtySumEl.textContent = qtyFormatter.format(quantitySum);
       itemTotalSumEl.textContent = amountFormatter.format(amountSum);
+      if (itemTotalCurrencyEl instanceof HTMLElement) {
+        if (currencyCodes.size === 1) {
+          itemTotalCurrencyEl.textContent = currencyCodes.values().next().value;
+        } else if (currencyCodes.size > 1) {
+          itemTotalCurrencyEl.textContent = '다중 통화';
+        } else {
+          itemTotalCurrencyEl.textContent = '-';
+        }
+      }
       if (itemSummaryContainer instanceof HTMLElement) {
         itemSummaryContainer.dataset.empty = rows.length ? "false" : "true";
       }
@@ -2320,92 +2359,6 @@ function openNewDialog() {
           hiddenInput.value = String(idx + 1);
         }
       });
-    };
-
-    const clearDragOverState = () => {
-      if (dragOverRow) {
-        dragOverRow.classList.remove('is-drag-over');
-        dragOverRow = null;
-      }
-    };
-
-    const handleDragStart = (event) => {
-      const handle = event.target instanceof HTMLElement ? event.target.closest('[data-item-drag-handle]') : null;
-      if (!handle) return;
-      const row = handle.closest('[data-item-row]');
-      if (!row) return;
-      draggingRow = row;
-      row.classList.add('is-dragging');
-      clearDragOverState();
-      if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-        try {
-          event.dataTransfer.setData('text/plain', row.dataset.itemKey || '');
-        } catch (err) {
-          // ignore
-        }
-      }
-    };
-
-    const handleDragOver = (event) => {
-      if (!draggingRow) return;
-      const targetRow = event.target instanceof HTMLElement ? event.target.closest('[data-item-row]') : null;
-      if (!targetRow) {
-        event.preventDefault();
-        clearDragOverState();
-        return;
-      }
-      event.preventDefault();
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'move';
-      }
-      if (targetRow === draggingRow) {
-        clearDragOverState();
-        return;
-      }
-      const rect = targetRow.getBoundingClientRect();
-      const shouldInsertAfter = event.clientY - rect.top > rect.height / 2;
-      const referenceNode = shouldInsertAfter ? targetRow.nextSibling : targetRow;
-      if (referenceNode !== draggingRow) {
-        itemRows.insertBefore(draggingRow, referenceNode);
-      }
-      if (dragOverRow && dragOverRow !== targetRow) {
-        dragOverRow.classList.remove('is-drag-over');
-      }
-      dragOverRow = targetRow;
-      targetRow.classList.add('is-drag-over');
-    };
-
-    const handleDragLeave = (event) => {
-      if (!draggingRow) return;
-      const targetRow = event.target instanceof HTMLElement ? event.target.closest('[data-item-row]') : null;
-      if (!targetRow || targetRow === draggingRow) return;
-      targetRow.classList.remove('is-drag-over');
-      if (dragOverRow === targetRow) {
-        dragOverRow = null;
-      }
-    };
-
-    const finalizeDragReorder = () => {
-      updateRowNumbers();
-      updateItemSummary();
-      updateStepActionState();
-    };
-
-    const handleDrop = (event) => {
-      if (!draggingRow) return;
-      event.preventDefault();
-      clearDragOverState();
-      finalizeDragReorder();
-    };
-
-    const handleDragEnd = () => {
-      if (draggingRow) {
-        draggingRow.classList.remove('is-dragging');
-      }
-      draggingRow = null;
-      clearDragOverState();
-      finalizeDragReorder();
     };
 
     const addRow = () => {
@@ -2458,11 +2411,6 @@ function openNewDialog() {
       };
       itemRows.addEventListener("input", handleItemChange);
       itemRows.addEventListener("change", handleItemChange);
-      itemRows.addEventListener("dragstart", handleDragStart);
-      itemRows.addEventListener("dragover", handleDragOver);
-      itemRows.addEventListener("drop", handleDrop);
-      itemRows.addEventListener("dragend", handleDragEnd);
-      itemRows.addEventListener("dragleave", handleDragLeave);
       form.addEventListener("reset", () => {
         window.requestAnimationFrame(() => {
           resetRows();

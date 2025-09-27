@@ -165,21 +165,15 @@ input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6
 .item-table-grid th,.item-table-grid td{padding:.45rem .55rem;font-size:.82rem;vertical-align:middle}
 .item-table-grid th{text-align:center;background:#f1f4ff}
 .item-table-grid td{text-align:left}
-.item-table-grid td:first-child,.item-table-grid th:first-child{text-align:center;width:48px}
-.item-table-grid td:nth-child(2),.item-table-grid th:nth-child(2){width:54px;text-align:center}
-.item-table-grid td:nth-child(3),.item-table-grid th:nth-child(3){width:70px;text-align:center}
+.item-table-grid td:first-child,.item-table-grid th:first-child{text-align:center;width:54px}
+.item-table-grid td:nth-child(2),.item-table-grid th:nth-child(2){width:70px;text-align:center}
 .item-table-grid input,.item-table-grid select{width:100%;padding:.4rem .45rem}
 .item-table-grid input[type="number"]{text-align:right}
 .item-table-grid input[readonly]{background:#f7f8fb}
 .item-table-grid select{width:100%}
-.item-table-grid th.item-cell-drag-header{font-size:.75rem;color:#5d6a98}
-.item-table-grid td.item-cell-drag{padding:.2rem .25rem;text-align:center}
-.item-row-handle{width:32px;height:32px;border-radius:6px;border:none;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:grab;color:#4a5680;font-size:1.1rem;line-height:1;user-select:none}
-.item-row-handle:hover{background:rgba(21,62,138,.08)}
-.item-row-handle:active{cursor:grabbing}
-.item-row-handle:focus{outline:2px solid rgba(21,62,138,.35);outline-offset:2px}
-.item-table-grid tbody tr.is-dragging{opacity:.65}
-.item-table-grid tbody tr.is-drag-over{outline:2px dashed #9aa7d8;outline-offset:-3px}
+.item-amount-field{display:flex;align-items:center;justify-content:flex-end;gap:.35rem}
+.item-amount-field input{flex:1 1 auto;min-width:0}
+.item-currency-label{flex:0 0 auto;font-weight:600;color:#153e8a;min-width:3rem;text-align:right}
 .item-cell-no{font-weight:600;color:#1d2e5b;text-align:center}
 .item-cell-no span{display:inline-flex;align-items:center;justify-content:center;min-width:32px}
 .item-table tbody tr td:first-child{text-align:center}
@@ -188,6 +182,7 @@ input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6
 .item-summary{display:flex;justify-content:flex-end;gap:1.25rem;font-weight:600;color:#1f2a44}
 .item-summary div{display:flex;align-items:center;gap:.35rem}
 .item-summary strong{font-size:1rem;color:#153e8a}
+.item-summary-currency{font-size:.9rem;color:#52608f}
 .inline-calendar-field{display:flex;flex-direction:column;gap:.75rem}
 .inline-calendar{border:1px solid #c7d1f1;border-radius:12px;background:#f8faff;padding:1rem;box-shadow:0 12px 32px rgba(17,31,68,.12);max-width:100%}
 .inline-calendar-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;color:#1b2a56;font-weight:700}
