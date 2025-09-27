@@ -327,9 +327,7 @@
                       <th scope="col">NO</th>
                       <th scope="col">품명</th>
                       <th scope="col">품목구분</th>
-                      <th scope="col">총수량</th>
                       <th scope="col">잔량</th>
-                      <th scope="col" class="packing-item-actions-header">배정</th>
                     </tr>
                   </thead>
                   <tbody data-packing-items-body></tbody>
@@ -341,7 +339,7 @@
               <header class="packing-panel-header">
                 <div class="packing-panel-heading">
                   <h4>박스(Packing)</h4>
-                  <p>박스를 생성하고 품목을 드래그하거나 배정 버튼으로 담아주세요.</p>
+                  <p>박스를 생성하고 품목을 드래그하여 담아주세요.</p>
                 </div>
                 <div class="packing-layout-actions">
                   <button type="button" class="btn primary" data-packing-open>패킹 추가</button>
@@ -375,7 +373,7 @@
                         <input type="number" name="packingHeight" min="0" step="0.1" data-packing-field="height" placeholder="0" />
                       </label>
                       <label>CBM
-                        <input type="number" name="packingCbm" min="0" step="0.001" data-packing-field="cbm" placeholder="0.000" />
+                        <input type="number" name="packingCbm" min="0" step="0.001" data-packing-field="cbm" placeholder="자동 계산" readonly />
                       </label>
                       <label>무게 (kg)
                         <input type="number" name="packingWeight" min="0" step="0.1" data-packing-field="weight" placeholder="0" />
@@ -409,24 +407,29 @@
   <dialog id="packingAssignDialog" aria-labelledby="packingAssignTitle">
     <form method="dialog" class="packing-assign" data-packing-assign-form>
       <header class="packing-assign-header">
-        <h3 id="packingAssignTitle">품목 배정</h3>
+        <h3 id="packingAssignTitle">품목 담기</h3>
         <p class="packing-assign-subtitle" data-packing-assign-subtitle></p>
       </header>
       <div class="packing-assign-body">
         <p class="packing-assign-remain">잔량: <strong data-packing-assign-remain>0</strong>개</p>
-        <label>박스 선택
-          <select data-packing-assign-box required></select>
-        </label>
-        <label>배정 수량
-          <input type="number" min="1" step="1" data-packing-assign-qty required />
-        </label>
-        <p class="packing-assign-hint">1 이상, 잔량 범위 내의 정수를 입력하세요.</p>
+        <div class="packing-assign-inline">
+          <label for="packingAssignQty">수량</label>
+          <input
+            id="packingAssignQty"
+            type="number"
+            min="1"
+            step="1"
+            data-packing-assign-qty
+            required
+          />
+          <button type="submit" class="btn primary" data-packing-assign-confirm>확인</button>
+        </div>
+        <p class="packing-assign-hint">드래그한 품목에서 담을 개수를 입력하세요.</p>
         <p class="packing-assign-error" data-packing-assign-error aria-live="polite"></p>
       </div>
-      <menu class="packing-assign-actions">
+      <div class="packing-assign-footer">
         <button type="button" class="btn" data-packing-assign-cancel>취소</button>
-        <button type="submit" class="btn primary" data-packing-assign-confirm>배정</button>
-      </menu>
+      </div>
     </form>
   </dialog>
 
