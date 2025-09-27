@@ -259,7 +259,7 @@ input,select,textarea{padding:.5rem;border:1px solid var(--line);border-radius:6
 .packing-card-summary{display:flex;gap:1rem;font-size:.82rem;color:#1b2a56;font-weight:600}
 .packing-card-delete{position:absolute;top:.6rem;right:.6rem;background:none;border:none;color:#7080a9;font-size:1rem;cursor:pointer;line-height:1;padding:.25rem;border-radius:50%}
 .packing-card-delete:hover{background:rgba(21,62,138,.12);color:#0f1b33}
-.packing-card-details{position:absolute;inset:.5rem;border-radius:8px;background:rgba(17,23,46,.92);color:#fff;padding:1rem;display:flex;flex-direction:column;gap:.5rem;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.packing-card-details{position:absolute;inset:.5rem;border-radius:8px;background:rgba(17,23,46,.92);color:#fff;padding:1rem;display:flex;flex-direction:column;gap:.5rem;opacity:0;pointer-events:none;transition:opacity .2s ease;right:2.75rem}
 .packing-card:hover .packing-card-details,.packing-card:focus-within .packing-card-details{opacity:1}
 .packing-card-details h5{margin:0;font-size:.9rem}
 .packing-card-details ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:.35rem;max-height:180px;overflow:auto}
