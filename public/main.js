@@ -2531,7 +2531,6 @@ function openNewDialog() {
     const assignForm = assignDialog?.querySelector('[data-packing-assign-form]');
     const assignSubtitle = assignDialog?.querySelector('[data-packing-assign-subtitle]');
     const assignRemainLabel = assignDialog?.querySelector('[data-packing-assign-remain]');
-    const assignBoxSelect = assignDialog?.querySelector('[data-packing-assign-box]');
     const assignQtyInput = assignDialog?.querySelector('[data-packing-assign-qty]');
     const assignError = assignDialog?.querySelector('[data-packing-assign-error]');
     const assignCancel = assignDialog?.querySelector('[data-packing-assign-cancel]');
@@ -2569,6 +2568,32 @@ function openNewDialog() {
       if (!(input instanceof HTMLInputElement)) return 0;
       const value = Number(input.value);
       return Number.isFinite(value) && value >= 0 ? value : 0;
+    };
+
+    const computeCbmValue = (length, width, height) => {
+      const product = length * width * height;
+      if (!Number.isFinite(product) || product <= 0) {
+        return 0;
+      }
+      return product / 1_000_000;
+    };
+
+    const readDimensions = () => {
+      const length = getNumericValue(inputs.length);
+      const width = getNumericValue(inputs.width);
+      const height = getNumericValue(inputs.height);
+      const cbm = computeCbmValue(length, width, height);
+      return { length, width, height, cbm };
+    };
+
+    const updateCbmField = () => {
+      if (!(inputs.cbm instanceof HTMLInputElement)) return;
+      const { length, width, height, cbm } = readDimensions();
+      if (length > 0 && width > 0 && height > 0 && cbm > 0) {
+        inputs.cbm.value = cbm.toFixed(3);
+      } else {
+        inputs.cbm.value = '';
+      }
     };
 
     const gatherItems = () => {
@@ -2676,27 +2701,18 @@ function openNewDialog() {
         packingItemsBody.innerHTML = '';
         return;
       }
-      const hasBoxes = state.boxes.length > 0;
       const rowsHtml = state.items
         .map((item) => {
           const remain = state.remainders.get(item.id) ?? item.totalQty;
-          const disabled = remain <= 0;
-          const dragHandle = `<span class=\"packing-item-handle\"${disabled ? ' aria-hidden=\"true\"' : ''}>⋮⋮</span>`;
-          const assignDisabled = disabled || !hasBoxes;
-          const assignButton = `<button type=\"button\" class=\"btn\" data-packing-item-assign data-item-id=\"${escapeHtml(
-            item.id
-          )}\"${assignDisabled ? ' disabled' : ''}>배정</button>`;
-          const kindLabel = item.kind ? `<span class=\"packing-item-kind\">${escapeHtml(item.kind)}</span>` : '';
+          const disabled = remain <= 0 || !state.boxes.length;
           return `
         <tr class=\"packing-item-row\" data-packing-item-row data-item-id=\"${escapeHtml(item.id)}\"${
             disabled ? ' data-disabled=\"true\"' : ''
           }>
-          <td>${dragHandle}${escapeHtml(item.no || '')}</td>
-          <td><span class=\"packing-item-name\">${escapeHtml(item.name || '-')}</span>${kindLabel}</td>
+          <td class=\"packing-item-no\">${escapeHtml(item.no || '')}</td>
+          <td><span class=\"packing-item-name\">${escapeHtml(item.name || '-')}</span></td>
           <td>${escapeHtml(item.kind || '-')}</td>
-          <td class=\"packing-item-qty\">${escapeHtml(quantityFormatter.format(item.totalQty))}</td>
-          <td><span class=\"packing-item-remainder\">${escapeHtml(quantityFormatter.format(remain))}</span></td>
-          <td class=\"packing-item-actions\">${assignButton}</td>
+          <td class=\"packing-item-remainder\">${escapeHtml(quantityFormatter.format(remain))}</td>
         </tr>
       `;
         })
@@ -2825,6 +2841,7 @@ function openNewDialog() {
       state.formOpen = true;
       syncFormVisibility();
       ensureDefaultName();
+      updateCbmField();
       if (focusInput && inputs.name instanceof HTMLInputElement) {
         inputs.name.focus();
       }
@@ -2838,6 +2855,7 @@ function openNewDialog() {
             input.value = '';
           }
         });
+        updateCbmField();
       }
       syncFormVisibility();
       ensureDefaultName();
@@ -2848,14 +2866,16 @@ function openNewDialog() {
 
     const handleCreate = () => {
       const nameValue = inputs.name instanceof HTMLInputElement ? inputs.name.value.trim() : '';
+      const { length, width, height, cbm } = readDimensions();
+      const normalizedCbm = cbm > 0 ? Number(cbm.toFixed(3)) : 0;
       const box = {
         boxId: `box-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         name: nameValue || `Packing ${String(state.boxes.length + 1).padStart(2, '0')}`,
         dimensions: {
-          L: getNumericValue(inputs.length),
-          W: getNumericValue(inputs.width),
-          H: getNumericValue(inputs.height),
-          CBM: getNumericValue(inputs.cbm),
+          L: length,
+          W: width,
+          H: height,
+          CBM: normalizedCbm,
         },
         weightKg: getNumericValue(inputs.weight),
         contents: [],
@@ -2889,6 +2909,9 @@ function openNewDialog() {
 
     const closeAssignDialog = () => {
       state.activeAssignment = null;
+      if (assignQtyInput instanceof HTMLInputElement) {
+        assignQtyInput.value = '';
+      }
       if (assignDialog instanceof HTMLDialogElement && assignDialog.open) {
         assignDialog.close();
       }
@@ -2905,27 +2928,36 @@ function openNewDialog() {
         alert('먼저 패킹을 추가해 주세요.');
         return;
       }
-      const baseRemain = state.remainders.get(itemId) ?? item.totalQty;
-      let targetBoxId = boxId || (state.boxes[0]?.boxId ?? '');
+      let targetBoxId = boxId || '';
+      if (mode === 'create' && !targetBoxId) {
+        alert('담을 박스를 선택할 수 없습니다.');
+        return;
+      }
       let currentQty = 0;
+      let targetBox = state.boxes.find((entry) => entry.boxId === targetBoxId);
       if (mode === 'edit') {
-        const box = state.boxes.find((entry) => entry.boxId === targetBoxId);
-        const content = box?.contents.find((entry) => entry.itemId === itemId);
-        if (!box || !content) {
+        targetBoxId = boxId || '';
+        targetBox = state.boxes.find((entry) => entry.boxId === targetBoxId);
+        const content = targetBox?.contents.find((entry) => entry.itemId === itemId);
+        if (!targetBox || !content) {
           alert('배정 정보를 찾을 수 없습니다.');
           return;
         }
-        targetBoxId = box.boxId;
         currentQty = Math.max(0, Math.floor(Number(content.qty) || 0));
       }
+      if (!targetBox) {
+        alert('존재하지 않는 박스입니다.');
+        return;
+      }
+      const baseRemain = state.remainders.get(itemId) ?? item.totalQty;
       const available = mode === 'edit' ? baseRemain + currentQty : baseRemain;
       if (available <= 0) {
-        alert('이 품목은 이미 모두 배정되었습니다.');
+        alert('이 품목은 이미 모두 담았습니다.');
         return;
       }
       if (assignSubtitle instanceof HTMLElement) {
-        const parts = [item.name, item.kind ? `(${item.kind})` : ''].filter(Boolean);
-        assignSubtitle.textContent = parts.length ? parts.join(' ') : '품목 배정';
+        const parts = [item.name || '', targetBox.name ? `→ ${targetBox.name}` : ''].filter(Boolean);
+        assignSubtitle.textContent = parts.length ? parts.join(' ') : '품목 담기';
       }
       if (assignRemainLabel instanceof HTMLElement) {
         assignRemainLabel.textContent = quantityFormatter.format(available);
@@ -2934,17 +2966,10 @@ function openNewDialog() {
         assignError.textContent = '';
       }
       if (assignConfirm instanceof HTMLButtonElement) {
-        assignConfirm.textContent = mode === 'edit' ? '변경' : '배정';
-      }
-      if (assignBoxSelect instanceof HTMLSelectElement) {
-        assignBoxSelect.innerHTML = state.boxes
-          .map((box) => `<option value=\"${escapeHtml(box.boxId)}\">${escapeHtml(box.name)}</option>`)
-          .join('');
-        assignBoxSelect.disabled = mode === 'edit';
-        assignBoxSelect.value = targetBoxId;
+        assignConfirm.textContent = '확인';
       }
       if (assignQtyInput instanceof HTMLInputElement) {
-        const defaultQty = mode === 'edit' ? currentQty : 1;
+        const defaultQty = mode === 'edit' ? currentQty : available;
         assignQtyInput.value = String(Math.max(1, Math.min(defaultQty || 1, available)));
         assignQtyInput.min = '1';
         assignQtyInput.max = String(available);
@@ -2952,7 +2977,7 @@ function openNewDialog() {
       state.activeAssignment = {
         mode,
         itemId,
-        boxId: targetBoxId,
+        boxId: targetBox.boxId,
         available,
       };
       assignDialog.showModal();
@@ -2967,15 +2992,15 @@ function openNewDialog() {
         closeAssignDialog();
         return;
       }
-      if (!(assignQtyInput instanceof HTMLInputElement) || !(assignBoxSelect instanceof HTMLSelectElement)) {
+      if (!(assignQtyInput instanceof HTMLInputElement)) {
         closeAssignDialog();
         return;
       }
       const mode = state.activeAssignment.mode;
-      const targetBoxId = mode === 'edit' ? state.activeAssignment.boxId : assignBoxSelect.value;
+      const targetBoxId = state.activeAssignment.boxId;
       if (!targetBoxId) {
         if (assignError instanceof HTMLElement) {
-          assignError.textContent = '배정할 박스를 선택해주세요.';
+          assignError.textContent = '담을 박스를 찾을 수 없습니다.';
         }
         return;
       }
@@ -2985,7 +3010,7 @@ function openNewDialog() {
         if (assignError instanceof HTMLElement) {
           assignError.textContent = `수량이 올바르지 않습니다. 1 이상, 잔량 ${quantityFormatter.format(
             state.activeAssignment.available
-          )} 이하로 입력하세요.`;
+          )}개 이하로 입력하세요.`;
         }
         return;
       }
@@ -3126,14 +3151,14 @@ function openNewDialog() {
           closeForm({ resetFields: true, focusTrigger: true });
         });
       }
+      ['length', 'width', 'height'].forEach((key) => {
+        const input = inputs[key];
+        if (input instanceof HTMLInputElement) {
+          input.addEventListener('input', updateCbmField);
+          input.addEventListener('change', updateCbmField);
+        }
+      });
       if (packingItemsBody instanceof HTMLElement) {
-        packingItemsBody.addEventListener('click', (event) => {
-          const button = event.target.closest('[data-packing-item-assign]');
-          if (!(button instanceof HTMLButtonElement)) return;
-          const itemId = button.dataset.itemId;
-          if (!itemId) return;
-          openAssignDialog({ itemId, mode: 'create' });
-        });
         packingItemsBody.addEventListener('dragstart', handleDragStart);
         packingItemsBody.addEventListener('dragend', handleDragEnd);
       }
@@ -3178,16 +3203,6 @@ function openNewDialog() {
           }
         });
       }
-      if (assignBoxSelect instanceof HTMLSelectElement) {
-        assignBoxSelect.addEventListener('change', () => {
-          if (state.activeAssignment && state.activeAssignment.mode === 'create') {
-            state.activeAssignment.boxId = assignBoxSelect.value;
-          }
-          if (assignError instanceof HTMLElement) {
-            assignError.textContent = '';
-          }
-        });
-      }
       if (assignQtyInput instanceof HTMLInputElement) {
         const clearError = () => {
           if (assignError instanceof HTMLElement) {
@@ -3208,6 +3223,7 @@ function openNewDialog() {
           closeAssignDialog();
           rerender();
           ensureDefaultName();
+          updateCbmField();
         });
       });
       state.bound = true;
@@ -3216,6 +3232,7 @@ function openNewDialog() {
     observeItems();
     syncFormVisibility();
     ensureDefaultName();
+    updateCbmField();
     rerender({ updateItems: true });
 
     state.openForm = (options) => openForm(options || {});
