@@ -3098,18 +3098,19 @@ function openNewDialog() {
     };
 
     const handleDrop = (event) => {
-      if (!draggingItemId) return;
+      const itemId = draggingItemId;
+      if (!itemId) return;
       const card = event.target instanceof HTMLElement ? event.target.closest('[data-box-id]') : null;
       if (!card) return;
       event.preventDefault();
       const boxId = card.dataset.boxId;
-      const remainder = state.remainders.get(draggingItemId) ?? 0;
+      const remainder = state.remainders.get(itemId) ?? 0;
       handleDragEnd();
       if (remainder <= 0) {
         alert('이 품목은 이미 모두 배정되었습니다.');
         return;
       }
-      openAssignDialog({ itemId: draggingItemId, boxId, mode: 'create' });
+      openAssignDialog({ itemId, boxId, mode: 'create' });
     };
 
     const handleItemsChange = () => {
