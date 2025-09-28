@@ -5,7 +5,7 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const app = $("#app");
 
 const PAGE_SIZE = 20;
-const EXPORT_TABLE_COLSPAN = 22;
+const EXPORT_TABLE_COLSPAN = 23;
 let currentPage = 1;
 let currentQuery = "";
 let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
@@ -373,6 +373,7 @@ function renderExport() {
           <colgroup>
             <col class="col-no" />
             <col class="col-type" />
+            <col class="col-strategic" />
             <col class="col-date" />
             <col class="col-project" />
             <col class="col-project-code" />
@@ -398,6 +399,7 @@ function renderExport() {
             <tr>
               <th scope="col" rowspan="2">NO</th>
               <th scope="col" rowspan="2">출고유형</th>
+              <th scope="col" rowspan="2">전략물자 구분</th>
               <th scope="col" rowspan="2">출고일</th>
               <th scope="col" rowspan="2">프로젝트명</th>
               <th scope="col" rowspan="2">프로젝트코드</th>
@@ -553,6 +555,11 @@ function renderRows(rows = [], meta = {}) {
       const seq = startIndex + idx + 1;
       const createdDate = formatDate(row.createdAt);
       const shipmentType = row.shipmentType ? escapeHtml(String(row.shipmentType)) : "-";
+      const strategicRaw =
+        row.strategicCategory ?? row.strategicClassification ?? row.strategicFlag ?? "";
+      const strategicClassification = strategicRaw
+        ? escapeHtml(String(strategicRaw))
+        : "-";
       const projectName = row.projectName ? escapeHtml(String(row.projectName)) : "-";
       const projectCode = row.projectCode ? escapeHtml(String(row.projectCode)) : "-";
       const item = row.item ? escapeHtml(String(row.item)) : "-";
@@ -582,6 +589,7 @@ function renderRows(rows = [], meta = {}) {
         <tr${rowAttrs}>
           ${td(String(seq), { align: "center" })}
           ${td(shipmentType, { empty: shipmentType === "-" })}
+          ${td(strategicClassification, { empty: strategicClassification === "-" })}
           ${td(createdDate, { empty: createdDate === "-" })}
           ${td(projectName, { align: "left", empty: projectName === "-" })}
           ${td(projectCode, { align: "left", empty: projectCode === "-" })}
