@@ -553,8 +553,14 @@ function renderRows(rows = [], meta = {}) {
   tbody.innerHTML = rows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
-      const createdDate = formatDate(row.createdAt);
-      const shipmentType = row.shipmentType ? escapeHtml(String(row.shipmentType)) : "-";
+      const shipmentDateValue =
+        row.dispatchDate ||
+        row.shipmentDate ||
+        (row.shipment && (row.shipment.dispatchDate || row.shipment.shipmentDate)) ||
+        row.createdAt;
+      const shipmentDate = formatDate(shipmentDateValue);
+      const shipmentTypeRaw = row.shipmentType || row.shipmentPurpose || row.exportType || row.shipmentTypeRaw || "";
+      const shipmentType = shipmentTypeRaw ? escapeHtml(String(shipmentTypeRaw)) : "-";
       const strategicRaw =
         row.strategicCategory ?? row.strategicClassification ?? row.strategicFlag ?? "";
       const strategicClassification = strategicRaw
@@ -564,11 +570,21 @@ function renderRows(rows = [], meta = {}) {
       const projectCode = row.projectCode ? escapeHtml(String(row.projectCode)) : "-";
       const item = row.item ? escapeHtml(String(row.item)) : "-";
       const qty = formatNumber(row.qty, qtyFormatter);
-      const client = row.client ? escapeHtml(String(row.client)) : "-";
-      const endUser = row.endUser ? escapeHtml(String(row.endUser)) : "-";
-      const country = row.country ? escapeHtml(String(row.country).toUpperCase()) : "-";
-      const department = row.department ? escapeHtml(String(row.department)) : "-";
-      const manager = row.manager ? escapeHtml(String(row.manager)) : "-";
+      const clientRaw = row.client || row.importer?.companyName || "";
+      const client = clientRaw ? escapeHtml(String(clientRaw)) : "-";
+      const endUserRaw = row.endUser || row.importer?.companyName || row.client || "";
+      const endUser = endUserRaw ? escapeHtml(String(endUserRaw)) : "-";
+      const countryRaw =
+        row.country ||
+        row.destinationCountry ||
+        row.shipment?.destinationCountry ||
+        row.importer?.country ||
+        "";
+      const country = countryRaw ? escapeHtml(String(countryRaw).toUpperCase()) : "-";
+      const departmentRaw = row.department || row.requester?.department || "";
+      const department = departmentRaw ? escapeHtml(String(departmentRaw)) : "-";
+      const managerRaw = row.manager || row.requester?.name || "";
+      const manager = managerRaw ? escapeHtml(String(managerRaw)) : "-";
       const statusRaw = row.status ? String(row.status) : "";
       const status = statusRaw ? escapeHtml(statusRaw) : "-";
       const note = row.note ? escapeHtml(String(row.note)) : "-";
@@ -590,7 +606,7 @@ function renderRows(rows = [], meta = {}) {
           ${td(String(seq), { align: "center" })}
           ${td(shipmentType, { empty: shipmentType === "-" })}
           ${td(strategicClassification, { empty: strategicClassification === "-" })}
-          ${td(createdDate, { empty: createdDate === "-" })}
+          ${td(shipmentDate, { empty: shipmentDate === "-" })}
           ${td(projectName, { align: "left", empty: projectName === "-" })}
           ${td(projectCode, { align: "left", empty: projectCode === "-" })}
           ${td(item, { align: "left", empty: item === "-" })}
@@ -774,6 +790,7 @@ function mapFormDataToPayload(data = {}) {
   const resolvedPurpose = exportType === "기타" && exportTypeDetail ? exportTypeDetail : exportType;
   const resolvedTransportMode = transportMode === "기타" && transportOther ? transportOther : transportMode;
   const resolvedIncoterms = incoterms === "기타" && incotermsOther ? incotermsOther : incoterms;
+  const resolvedDispatchDate = dispatchDate || "";
 
   const payload = {
     exportType,
@@ -807,7 +824,7 @@ function mapFormDataToPayload(data = {}) {
     notifyEtc,
     originCountry,
     destinationCountry,
-    dispatchDate,
+    dispatchDate: resolvedDispatchDate,
     transportMode,
     transportOther: transportMode === "기타" ? transportOther : "",
     loadingDate,
@@ -859,7 +876,8 @@ function mapFormDataToPayload(data = {}) {
       incotermsRaw: incoterms,
       paymentTerms,
     },
-    shipmentType: exportType,
+    shipmentType: resolvedPurpose,
+    shipmentTypeRaw: exportType,
     shipmentPurpose: resolvedPurpose,
     projectNameDisplay: projectName,
     projectCodeDisplay: projectCode,
@@ -870,8 +888,10 @@ function mapFormDataToPayload(data = {}) {
     client: importCompanyName,
     clientCountry: importCountry,
     clientManager: importContactName,
+    endUser: importCompanyName,
     note: importEtc,
-    country: (importCountry || destinationCountry || firstItem.origin || originCountry || "").toUpperCase(),
+    shipmentDate: resolvedDispatchDate,
+    country: (destinationCountry || importCountry || firstItem.origin || originCountry || "").toUpperCase(),
     status: "대기",
   };
   return payload;

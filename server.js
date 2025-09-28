@@ -81,7 +81,9 @@ app.post("/api/exports", (req, res) => {
     country,
     status,
     shipmentType,
+    shipmentTypeRaw,
     shipmentDate,
+    dispatchDate,
     shipmentPurpose,
     projectName,
     projectCode,
@@ -122,6 +124,8 @@ app.post("/api/exports", (req, res) => {
   const qn = Number(qty), up = Number(unitPrice);
   if (Number.isNaN(qn) || Number.isNaN(up)) return res.status(400).json({ ok:false, error:"수량/단가 숫자 필요" });
 
+  const resolvedShipmentDate = dispatchDate || shipmentDate || "";
+
   const row = {
     id: seq++,
     item: String(item),
@@ -131,7 +135,9 @@ app.post("/api/exports", (req, res) => {
     status: String(status),
     createdAt: Date.now(),
     shipmentType: shipmentType ? String(shipmentType) : "",
-    shipmentDate: shipmentDate ? String(shipmentDate) : "",
+    shipmentTypeRaw: shipmentTypeRaw ? String(shipmentTypeRaw) : "",
+    shipmentDate: resolvedShipmentDate ? String(resolvedShipmentDate) : "",
+    dispatchDate: resolvedShipmentDate ? String(resolvedShipmentDate) : "",
     shipmentPurpose: shipmentPurpose ? String(shipmentPurpose) : "",
     projectName: projectName ? String(projectName) : "",
     projectCode: projectCode ? String(projectCode) : "",
