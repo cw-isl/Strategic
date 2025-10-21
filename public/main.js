@@ -11,6 +11,7 @@ let currentQuery = "";
 let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 let lastServerMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 let lastFetchedItems = [];
+let lastCombinedRows = [];
 const draftEntries = [];
 let draftSeq = -1;
 let selectionHandlersInitialized = false;
@@ -151,6 +152,276 @@ const COUNTRY_LIST = COUNTRY_DATA.map((item) => {
     searchValue,
   };
 }).sort((a, b) => a.name.localeCompare(b.name, "ko-KR"));
+
+function resolveCountryData(value) {
+  if (value === undefined || value === null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.toLowerCase();
+  const numeric = raw.replace(/[+\s-]/g, "");
+  return (
+    COUNTRY_LIST.find((country) =>
+      country.name === raw ||
+      country.english.toLowerCase() === normalized ||
+      country.iso2 === raw.toUpperCase() ||
+      country.dialCode === raw ||
+      country.dialCode.replace(/[+\s-]/g, "") === numeric
+    ) || null
+  );
+}
+
+function resolveRowIdentifier(row, fallbackIndex) {
+  if (!row || typeof row !== "object") {
+    return typeof fallbackIndex === "number" ? `row-${fallbackIndex}` : "";
+  }
+  const candidates = [
+    row._entryId,
+    row.id,
+    row._id,
+    row.seq,
+    row.projectCode,
+    row.contractNumber,
+    row.client,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const str = String(candidate).trim();
+    if (str) return str;
+  }
+  if (typeof fallbackIndex === "number") {
+    return `row-${fallbackIndex}`;
+  }
+  if (row.createdAt !== undefined) {
+    return `row-${row.createdAt}`;
+  }
+  return "";
+}
+
+function resolveResumeStep(meta, totalSteps) {
+  const steps = Number.isFinite(totalSteps) && totalSteps > 0 ? Math.floor(totalSteps) : 0;
+  if (!meta || typeof meta !== "object" || steps <= 0) {
+    return 0;
+  }
+  const rawStep =
+    meta.stepIndex ??
+    (Number.isFinite(meta.resumeStep) ? meta.resumeStep : undefined) ??
+    (Number.isFinite(meta.completedSteps) ? Number(meta.completedSteps) - 1 : undefined);
+  if (!Number.isFinite(rawStep)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(steps - 1, Math.floor(rawStep)));
+}
+
+function mapRowToFormValues(row = {}) {
+  const fields = {};
+  const setField = (name, value, { boolean = false } = {}) => {
+    if (boolean) {
+      fields[name] = Boolean(value);
+      return;
+    }
+    if (value === undefined || value === null) {
+      fields[name] = "";
+      return;
+    }
+    fields[name] = String(value);
+  };
+  const toStringOrEmpty = (value) => (value === undefined || value === null ? "" : String(value));
+  const toNumberOrZero = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const exportType = row.exportType ?? row.shipmentTypeRaw ?? row.shipmentType ?? "";
+  setField("exportType", exportType);
+  const exportTypeDetail = row.exportTypeDetail ?? (exportType === "기타" ? row.shipmentPurpose ?? "" : "");
+  setField("exportTypeDetail", exportTypeDetail);
+
+  setField("projectName", row.projectName ?? row.projectNameDisplay ?? "");
+  setField("projectCode", row.projectCode ?? row.projectCodeDisplay ?? "");
+
+  const strategicFlag = row.strategicFlag ?? row.strategicClassification ?? "";
+  setField("strategicFlag", strategicFlag);
+  const strategicCertificate =
+    row.strategicExpertCertificate ??
+    row.strategicExpertCertificateId ??
+    row.strategicExpertCertificateName ??
+    "";
+  setField("strategicExpertCertificate", strategicCertificate);
+
+  const requester = row.requester || {};
+  setField("managerName", row.managerName ?? requester.name ?? "");
+  setField("managerDepartment", row.managerDepartment ?? requester.department ?? "");
+  setField("managerPhone", row.managerPhone ?? requester.phone ?? "");
+  setField("managerEmail", row.managerEmail ?? requester.email ?? "");
+
+  const importer = row.importer || {};
+  const importCountryData = resolveCountryData(
+    row.importCountry ?? importer.country ?? row.clientCountry ?? ""
+  );
+  setField("importCompanyName", row.importCompanyName ?? importer.companyName ?? row.client ?? "");
+  setField("importAddress", row.importAddress ?? importer.address ?? "");
+  setField("importCountry", importCountryData?.name ?? (typeof row.importCountry === "string" ? row.importCountry.trim() : ""));
+  setField(
+    "importCountryCode",
+    row.importCountryCode ?? importer.countryCode ?? importCountryData?.dialCode ?? ""
+  );
+  setField("importPhone", row.importPhone ?? importer.phone ?? "");
+  setField("importContactName", row.importContactName ?? importer.contactName ?? row.clientManager ?? "");
+  setField("importContactPhone", row.importContactPhone ?? importer.contactPhone ?? "");
+  setField("importEmail", row.importEmail ?? importer.email ?? "");
+  setField("importEtc", row.importEtc ?? importer.etc ?? row.note ?? "");
+
+  const notifyParty = row.notifyParty || {};
+  setField(
+    "notifySameAsImporter",
+    row.notifySameAsImporter ?? notifyParty.sameAsImporter ?? false,
+    { boolean: true }
+  );
+  setField("notifyCompanyName", row.notifyCompanyName ?? notifyParty.companyName ?? "");
+  setField("notifyAddress", row.notifyAddress ?? notifyParty.address ?? "");
+  const notifyCountryData = resolveCountryData(row.notifyCountry ?? notifyParty.country ?? "");
+  setField("notifyCountry", notifyCountryData?.name ?? (typeof row.notifyCountry === "string" ? row.notifyCountry.trim() : ""));
+  setField(
+    "notifyCountryCode",
+    row.notifyCountryCode ?? notifyParty.countryCode ?? notifyCountryData?.dialCode ?? ""
+  );
+  setField("notifyPhone", row.notifyPhone ?? notifyParty.phone ?? "");
+  setField("notifyContactName", row.notifyContactName ?? notifyParty.contactName ?? "");
+  setField("notifyContactPhone", row.notifyContactPhone ?? notifyParty.contactPhone ?? "");
+  setField("notifyEmail", row.notifyEmail ?? notifyParty.email ?? "");
+  setField("notifyEtc", row.notifyEtc ?? notifyParty.etc ?? "");
+
+  const originCountryData = resolveCountryData(row.originCountry ?? row.shipment?.originCountry ?? "");
+  const destinationCountryData = resolveCountryData(
+    row.destinationCountry ?? row.shipment?.destinationCountry ?? row.country ?? ""
+  );
+  setField(
+    "originCountry",
+    originCountryData?.name ?? (typeof row.originCountry === "string" ? row.originCountry.trim() : "")
+  );
+  setField(
+    "destinationCountry",
+    destinationCountryData?.name ??
+      (typeof row.destinationCountry === "string" ? row.destinationCountry.trim() : "")
+  );
+
+  const dispatchDate = row.dispatchDate ?? row.shipment?.dispatchDate ?? row.shipmentDate ?? "";
+  const loadingDate = row.loadingDate ?? row.shipment?.loadingDate ?? "";
+  setField("dispatchDate", dispatchDate);
+  setField("loadingDate", loadingDate);
+
+  const transportModeRaw =
+    row.transportModeRaw ?? row.transportMode ?? row.shipment?.transportModeRaw ?? row.shipment?.transportMode ?? "";
+  setField("transportMode", transportModeRaw);
+  const transportOther =
+    row.transportOther ?? (transportModeRaw === "기타" ? row.shipment?.transportMode ?? "" : "");
+  setField("transportOther", transportOther);
+
+  const incotermsRaw =
+    row.incotermsRaw ?? row.incoterms ?? row.shipment?.incotermsRaw ?? row.shipment?.incoterms ?? "";
+  setField("incoterms", incotermsRaw);
+  const incotermsOther =
+    row.incotermsOther ?? (incotermsRaw === "기타" ? row.shipment?.incoterms ?? "" : "");
+  setField("incotermsOther", incotermsOther);
+  setField("paymentTerms", row.paymentTerms ?? row.shipment?.paymentTerms ?? "");
+
+  const itemsSource = Array.isArray(row.items) ? row.items : [];
+  const packingItemsSource = Array.isArray(row.packing?.items) ? row.packing.items : [];
+  const maxItems = Math.max(itemsSource.length, packingItemsSource.length);
+  const itemRows = [];
+  const packingItems = [];
+
+  for (let index = 0; index < maxItems; index += 1) {
+    const item = itemsSource[index] || {};
+    const packingItem = packingItemsSource[index] || {};
+    const idCandidate =
+      packingItem.id ??
+      packingItem.itemId ??
+      packingItem.key ??
+      item.id ??
+      item.itemId ??
+      `item-${index + 1}`;
+    const id = idCandidate === undefined || idCandidate === null ? `item-${index + 1}` : String(idCandidate);
+    const noValue = item.no ?? item.itemNo ?? packingItem.no ?? index + 1;
+    const nameValue = item.name ?? item.itemName ?? packingItem.name ?? "";
+    const categoryValue = item.category ?? item.kind ?? item.itemCategory ?? packingItem.kind ?? "";
+    const quantityValue =
+      item.quantity ?? item.qty ?? packingItem.totalQty ?? packingItem.quantity ?? "";
+    const currencyValue = item.currency ?? row.currency ?? "";
+    const unitPriceValue = item.unitPrice ?? item.price ?? "";
+    const totalValue = item.total ?? item.amount ?? "";
+    const originRaw = item.origin ?? item.originCountry ?? packingItem.origin ?? "";
+    const originData = resolveCountryData(originRaw);
+    const originName = originData?.name ?? (typeof originRaw === "string" ? originRaw.trim() : "");
+    const originOther = originData ? "" : (typeof originRaw === "string" ? originRaw.trim() : "");
+
+    if (
+      !nameValue &&
+      !categoryValue &&
+      !quantityValue &&
+      !currencyValue &&
+      !unitPriceValue &&
+      !totalValue &&
+      !originName &&
+      !originOther
+    ) {
+      continue;
+    }
+
+    itemRows.push({
+      id,
+      no: toStringOrEmpty(noValue),
+      name: toStringOrEmpty(nameValue),
+      category: toStringOrEmpty(categoryValue),
+      quantity: toStringOrEmpty(quantityValue),
+      currency: toStringOrEmpty(currencyValue),
+      unitPrice: toStringOrEmpty(unitPriceValue),
+      total: toStringOrEmpty(totalValue),
+      origin: originName,
+      originOther,
+    });
+
+    const totalQtyNumeric = toNumberOrZero(
+      packingItem.totalQty ?? packingItem.quantity ?? quantityValue ?? 0
+    );
+    packingItems.push({
+      id,
+      no: toStringOrEmpty(noValue),
+      name: toStringOrEmpty(nameValue),
+      kind: toStringOrEmpty(packingItem.kind ?? categoryValue ?? ""),
+      totalQty: totalQtyNumeric,
+    });
+  }
+
+  const packingBoxesSource = Array.isArray(row.packing?.boxes) ? row.packing.boxes : [];
+  const packingBoxes = packingBoxesSource.map((box, index) => {
+    const contents = Array.isArray(box?.contents)
+      ? box.contents
+          .map((content) => ({
+            itemId: content?.itemId || content?.id || content?.key || "",
+            qty: Math.max(0, toNumberOrZero(content?.qty ?? content?.quantity ?? 0)),
+          }))
+          .filter((content) => content.itemId)
+      : [];
+    return {
+      boxId: box?.boxId || box?.id || `box-${index + 1}`,
+      name: box?.name || `Packing ${String(index + 1).padStart(2, "0")}`,
+      dimensions: {
+        L: toNumberOrZero(box?.dimensions?.L ?? box?.length ?? 0),
+        W: toNumberOrZero(box?.dimensions?.W ?? box?.width ?? 0),
+        H: toNumberOrZero(box?.dimensions?.H ?? box?.height ?? 0),
+        CBM: toNumberOrZero(box?.dimensions?.CBM ?? box?.cbm ?? 0),
+      },
+      weightKg: toNumberOrZero(box?.weightKg ?? box?.weight ?? 0),
+      contents,
+      note: toStringOrEmpty(box?.note ?? ""),
+    };
+  });
+
+  const packingData = packingItems.length || packingBoxes.length ? { items: packingItems, boxes: packingBoxes } : null;
+
+  return { fields, itemRows, packingData, draft: row.draft ?? null };
+}
 
 const EXPERT_CERTIFICATES = [
   {
@@ -453,8 +724,14 @@ function renderExport() {
     continueButton.addEventListener("click", () => {
       const selectedIds = getSelectedDraftRowIds();
       if (!selectedIds.length) return;
-      // 추후 실제 데이터 연동 시 선택한 임시저장 건을 불러오도록 연결
-      openNewDialog();
+      if (selectedIds.length > 1) {
+        alert("이어서 등록할 임시저장 건을 하나만 선택해주세요.");
+        return;
+      }
+      const resumed = resumeDraftEntry(selectedIds[0]);
+      if (!resumed) {
+        alert("선택한 임시저장 데이터를 불러오지 못했습니다. 다시 시도해 주세요.");
+      }
     });
   }
   $("#pagination").addEventListener("click", onPaginationClick);
@@ -539,6 +816,7 @@ function renderRows(rows = [], meta = {}) {
 
   if (!rows.length) {
     tbody.innerHTML = `<tr><td colspan="${EXPORT_TABLE_COLSPAN}" data-empty="true">데이터가 없습니다.</td></tr>`;
+    lastCombinedRows = [];
     updateContinueButtonVisibility();
     return;
   }
@@ -597,7 +875,8 @@ function renderRows(rows = [], meta = {}) {
       const fileNote = docValue(row.fileNote);
       const statusNormalized = statusRaw.replace(/\s+/g, "");
       const isDraftStatus = Boolean(row.isDraft) || statusNormalized.includes("임시저장");
-      const rowIdentifier = row.id ?? row._id ?? row.seq ?? row.projectCode ?? row.contractNumber ?? row.client ?? `row-${startIndex + idx}`;
+      const rowIdentifier = resolveRowIdentifier(row, startIndex + idx);
+      row._entryId = rowIdentifier;
       const selectBox = `<input type="checkbox" data-select data-entry-id="${escapeHtml(String(rowIdentifier))}" data-draft="${isDraftStatus ? "true" : "false"}" aria-label="선택" />`;
       const rowAttrs = isDraftStatus ? " data-draft=\"true\"" : row.isDraft ? " data-draft=\"true\"" : "";
 
@@ -631,6 +910,7 @@ function renderRows(rows = [], meta = {}) {
     })
     .join("");
 
+  lastCombinedRows = rows.slice();
   ensureSelectionHandlers();
   updateContinueButtonVisibility();
 }
@@ -656,6 +936,140 @@ function getSelectedDraftRowIds() {
     .filter(Boolean);
 }
 
+function findDraftEntryById(entryId) {
+  if (entryId === undefined || entryId === null) return null;
+  const target = String(entryId).trim();
+  if (!target) return null;
+  for (const entry of draftEntries) {
+    if (!entry || typeof entry !== "object") continue;
+    const candidates = [entry.id, entry.row?._entryId, entry.row?.id];
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      if (String(candidate).trim() === target) {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
+function findRowByEntryId(entryId) {
+  if (entryId === undefined || entryId === null) return null;
+  const target = String(entryId).trim();
+  if (!target) return null;
+  for (const row of lastCombinedRows) {
+    if (!row || typeof row !== "object") continue;
+    const candidates = [
+      row._entryId,
+      row.id,
+      row._id,
+      row.seq,
+      row.projectCode,
+      row.contractNumber,
+    ];
+    for (const candidate of candidates) {
+      if (candidate === undefined || candidate === null) continue;
+      if (String(candidate).trim() === target) {
+        return row;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeResumeMeta(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  const normalized = { ...meta };
+  const toNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  };
+
+  const stepIndex = toNumber(normalized.stepIndex);
+  if (stepIndex !== null) {
+    normalized.stepIndex = Math.max(0, Math.floor(stepIndex));
+  } else if (Object.prototype.hasOwnProperty.call(normalized, "stepIndex")) {
+    delete normalized.stepIndex;
+  }
+
+  const resumeStep = toNumber(normalized.resumeStep);
+  if (resumeStep !== null) {
+    normalized.resumeStep = Math.max(0, Math.floor(resumeStep));
+  } else if (Object.prototype.hasOwnProperty.call(normalized, "resumeStep")) {
+    delete normalized.resumeStep;
+  }
+
+  const completedSteps = toNumber(normalized.completedSteps);
+  if (completedSteps !== null) {
+    normalized.completedSteps = Math.max(0, Math.floor(completedSteps));
+  } else if (Object.prototype.hasOwnProperty.call(normalized, "completedSteps")) {
+    delete normalized.completedSteps;
+  }
+
+  const totalSteps = toNumber(normalized.totalSteps);
+  if (totalSteps !== null) {
+    normalized.totalSteps = Math.max(0, Math.floor(totalSteps));
+  } else if (Object.prototype.hasOwnProperty.call(normalized, "totalSteps")) {
+    delete normalized.totalSteps;
+  }
+
+  return normalized;
+}
+
+function computeStartStep(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  if (Number.isFinite(meta.stepIndex)) return Math.max(0, Math.floor(meta.stepIndex));
+  if (Number.isFinite(meta.resumeStep)) return Math.max(0, Math.floor(meta.resumeStep));
+  if (Number.isFinite(meta.completedSteps)) {
+    return Math.max(0, Math.floor(meta.completedSteps) - 1);
+  }
+  return null;
+}
+
+function resumeDraftEntry(entryId) {
+  const entry = findDraftEntryById(entryId);
+  if (entry) {
+    const mapped = mapRowToFormValues(entry.row || {});
+    const packingData = entry.packingData
+      ? clonePackingData(entry.packingData)
+      : clonePackingData(mapped.packingData);
+    const resumeMeta = normalizeResumeMeta(entry.draftMeta || mapped.draft);
+    const startStep = computeStartStep(resumeMeta);
+    openNewDialog({
+      initialData: {
+        fields: mapped.fields,
+        itemRows: mapped.itemRows,
+        packingData,
+        draft: resumeMeta,
+      },
+      resumeMeta,
+      startStep,
+    });
+    return true;
+  }
+
+  const row = findRowByEntryId(entryId);
+  if (row) {
+    const mapped = mapRowToFormValues(row);
+    const packingData = clonePackingData(mapped.packingData || row.packing);
+    const resumeMeta = normalizeResumeMeta(row.draft || mapped.draft);
+    const startStep = computeStartStep(resumeMeta);
+    openNewDialog({
+      initialData: {
+        fields: mapped.fields,
+        itemRows: mapped.itemRows,
+        packingData,
+        draft: resumeMeta,
+      },
+      resumeMeta,
+      startStep,
+    });
+    return true;
+  }
+
+  return false;
+}
+
 function updateContinueButtonVisibility() {
   const continueButton = $("#continueBtn");
   if (!continueButton) return;
@@ -664,7 +1078,8 @@ function updateContinueButtonVisibility() {
 }
 
 function getCombinedRows(serverRows = []) {
-  return serverRows;
+  const draftRows = draftEntries.map((entry) => entry.row);
+  return [...draftRows, ...serverRows];
 }
 
 function updateMeta() {
@@ -897,7 +1312,10 @@ function mapFormDataToPayload(data = {}) {
   return payload;
 }
 
-function mapFormDataToRow(data = {}, { draft = false } = {}) {
+function mapFormDataToRow(
+  data = {},
+  { draft = false, completedSteps, totalSteps, savedAt } = {}
+) {
   const payload = mapFormDataToPayload(data);
   const row = {
     ...payload,
@@ -907,13 +1325,90 @@ function mapFormDataToRow(data = {}, { draft = false } = {}) {
     isDraft: draft,
   };
   row.country = payload.country ? payload.country.toUpperCase() : "";
+  if (draft) {
+    const draftMeta = {};
+    if (Number.isFinite(completedSteps)) {
+      draftMeta.completedSteps = Math.max(0, Math.floor(Number(completedSteps)));
+    }
+    if (Number.isFinite(totalSteps)) {
+      draftMeta.totalSteps = Math.max(0, Math.floor(Number(totalSteps)));
+    }
+    draftMeta.savedAt = savedAt || new Date().toISOString();
+    row.draft = { ...(row.draft || {}), ...draftMeta };
+  }
   return row;
 }
 
-function addDraftEntry(data) {
-  const row = mapFormDataToRow(data, { draft: true });
+function clonePackingData(packingData) {
+  if (!packingData || typeof packingData !== "object") return null;
+  const items = Array.isArray(packingData.items)
+    ? packingData.items.map((item) => ({
+        id: item?.id || item?.itemId || item?.key || "",
+        no: item?.no ?? "",
+        name: item?.name ?? "",
+        kind: item?.kind ?? "",
+        totalQty: Number(item?.totalQty ?? item?.quantity ?? 0) || 0,
+      }))
+    : [];
+  const boxes = Array.isArray(packingData.boxes)
+    ? packingData.boxes.map((box, index) => ({
+        boxId: box?.boxId || box?.id || `box-${index + 1}`,
+        name: box?.name || `Packing ${String(index + 1).padStart(2, "0")}`,
+        dimensions: {
+          L: Number(box?.dimensions?.L ?? box?.length ?? 0) || 0,
+          W: Number(box?.dimensions?.W ?? box?.width ?? 0) || 0,
+          H: Number(box?.dimensions?.H ?? box?.height ?? 0) || 0,
+          CBM: Number(box?.dimensions?.CBM ?? box?.cbm ?? 0) || 0,
+        },
+        weightKg: Number(box?.weightKg ?? box?.weight ?? 0) || 0,
+        contents: Array.isArray(box?.contents)
+          ? box.contents
+              .map((content) => ({
+                itemId: content?.itemId || content?.id || content?.key || "",
+                qty: Math.max(0, Number(content?.qty ?? content?.quantity ?? 0) || 0),
+              }))
+              .filter((content) => content.itemId)
+          : [],
+        note: box?.note ?? "",
+      }))
+    : [];
+  return { items, boxes };
+}
+
+function addDraftEntry(
+  data,
+  { stepIndex = 0, totalSteps, packingData } = {}
+) {
+  const normalizedTotalSteps = Number.isFinite(totalSteps) && totalSteps > 0 ? Math.floor(totalSteps) : undefined;
+  const completedSteps = Number.isFinite(stepIndex)
+    ? Math.max(0, Math.floor(Number(stepIndex)) + 1)
+    : 1;
+  const cappedCompletedSteps = normalizedTotalSteps
+    ? Math.min(normalizedTotalSteps, completedSteps)
+    : completedSteps;
+  const savedAt = new Date().toISOString();
+  const row = mapFormDataToRow(data, {
+    draft: true,
+    completedSteps: cappedCompletedSteps,
+    totalSteps: normalizedTotalSteps,
+    savedAt,
+  });
   row.id = `D${Date.now()}_${Math.abs(draftSeq--)}`;
-  draftEntries.unshift(row);
+  row._entryId = row.id;
+  const entry = {
+    id: row.id,
+    row,
+    formValues: data,
+    packingData: clonePackingData(packingData),
+    draftMeta: {
+      stepIndex: Number.isFinite(stepIndex) ? Math.max(0, Math.floor(Number(stepIndex))) : 0,
+      completedSteps: cappedCompletedSteps,
+      totalSteps: normalizedTotalSteps ?? null,
+      savedAt,
+    },
+  };
+  draftEntries.unshift(entry);
+  return entry;
 }
 
 function formHasInput(form) {
@@ -1020,16 +1515,35 @@ function td(content, { align, empty = false } = {}) {
   return `<td${classAttr}${emptyAttr}>${content}</td>`;
 }
 
-function openNewDialog() {
+function openNewDialog(options = {}) {
   const dialog = $("#newExportDialog");
   const form = $("#newExportForm");
   if (!dialog || !form) return;
+
+  const initialData = options.initialData || {};
+  const fieldValues = initialData.fields || options.fieldValues || null;
+  const itemRowsData = Array.isArray(initialData.itemRows)
+    ? initialData.itemRows
+    : Array.isArray(options.itemRows)
+    ? options.itemRows
+    : [];
+  const packingData = initialData.packingData || options.packingData || null;
+  const resumeMeta = options.resumeMeta ?? initialData.draft ?? null;
+  const explicitStep =
+    Number.isFinite(options.startStep) ? Math.floor(Number(options.startStep)) : null;
 
   form.reset();
 
   const steps = $$(".step", form);
   const totalSteps = steps.length;
   let currentStep = 0;
+  if (totalSteps > 0) {
+    if (explicitStep !== null) {
+      currentStep = Math.max(0, Math.min(totalSteps - 1, explicitStep));
+    } else {
+      currentStep = resolveResumeStep(resumeMeta, totalSteps);
+    }
+  }
   const packingStepIndex = steps.findIndex((step) => step.hasAttribute("data-packing-step"));
   let syncPackingVisibility = null;
 
@@ -2400,12 +2914,13 @@ function openNewDialog() {
       const rows = $$('[data-item-row]', itemRows);
       rows.forEach((row, idx) => {
         const display = row.querySelector('[data-item-no-display]');
+        const preset = row.dataset.itemNoPreset;
         if (display) {
-          display.textContent = String(idx + 1);
+          display.textContent = preset ? preset : String(idx + 1);
         }
         const hiddenInput = row.querySelector('input[name="itemNo"]');
         if (hiddenInput instanceof HTMLInputElement) {
-          hiddenInput.value = String(idx + 1);
+          hiddenInput.value = preset ? preset : String(idx + 1);
         }
       });
     };
@@ -2441,6 +2956,91 @@ function openNewDialog() {
         updateStepActionState();
       }
     };
+
+    const setRows = (items = []) => {
+      if (!itemRows) return;
+      const list = Array.isArray(items) ? items : [];
+      itemRows.innerHTML = "";
+      if (!list.length) {
+        resetRows();
+        return;
+      }
+      list.forEach((item, index) => {
+        const row = createRow();
+        itemRows.appendChild(row);
+        if (item && typeof item === "object") {
+          if (item.id !== undefined && item.id !== null) {
+            row.dataset.itemKey = String(item.id);
+          }
+          if (item.no !== undefined && item.no !== null && item.no !== "") {
+            row.dataset.itemNoPreset = String(item.no);
+          } else {
+            delete row.dataset.itemNoPreset;
+          }
+          const setValue = (selector, value) => {
+            const el = row.querySelector(selector);
+            if (!el) return;
+            const normalized = value === undefined || value === null ? "" : String(value);
+            if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+              el.value = normalized;
+            } else if (el instanceof HTMLSelectElement) {
+              el.value = normalized;
+            }
+          };
+          setValue('input[name="itemName"]', item.name);
+          setValue('input[name="itemCategory"]', item.category);
+          setValue('input[name="itemQuantity"]', item.quantity);
+          setValue('input[name="itemUnitPrice"]', item.unitPrice);
+          setValue('input[name="itemTotal"]', item.total);
+          setValue('input[name="itemNo"]', item.no ?? index + 1);
+          const displayNo = row.querySelector('[data-item-no-display]');
+          if (displayNo) {
+            if (item.no !== undefined && item.no !== null && item.no !== "") {
+              displayNo.textContent = String(item.no);
+            }
+          }
+          const currencySelect = row.querySelector('select[name="itemCurrency"]');
+          if (currencySelect instanceof HTMLSelectElement) {
+            currencySelect.value = item.currency === undefined || item.currency === null ? "" : String(item.currency);
+          }
+          const originSelect = row.querySelector('[data-item-origin-select]');
+          const originOtherInput = row.querySelector('[data-item-origin-other]');
+          const originValue = item.origin ?? "";
+          const originData = resolveCountryData(originValue);
+          const normalizedOrigin = originData?.name ?? (typeof originValue === "string" ? originValue : "");
+          if (originSelect instanceof HTMLSelectElement) {
+            const hasOption = Array.from(originSelect.options).some((option) => option.value === normalizedOrigin);
+            if (hasOption) {
+              originSelect.value = normalizedOrigin;
+              if (originOtherInput instanceof HTMLInputElement) {
+                originOtherInput.value = "";
+              }
+            } else if (normalizedOrigin) {
+              originSelect.value = "기타";
+              if (originOtherInput instanceof HTMLInputElement) {
+                originOtherInput.value = normalizedOrigin;
+              }
+            } else {
+              originSelect.value = "";
+              if (originOtherInput instanceof HTMLInputElement) {
+                originOtherInput.value = "";
+              }
+            }
+          }
+          if (originOtherInput instanceof HTMLInputElement && item.originOther) {
+            originOtherInput.value = String(item.originOther);
+          }
+        }
+        setupOriginField(row);
+        updateRowCurrencyLabels(row);
+        updateRowTotal(row);
+      });
+      updateRowNumbers();
+      updateItemSummary();
+      updateStepActionState();
+    };
+
+    state.setRows = (items) => setRows(items);
 
     if (!state.bound) {
       addItemButton?.addEventListener("click", () => {
@@ -3264,6 +3864,41 @@ function openNewDialog() {
     updateCbmField();
     rerender({ updateItems: true });
 
+    state.setData = ({ items = [], boxes = [] } = {}) => {
+      if (Array.isArray(items)) {
+        state.items = items.map((item, index) => ({
+          id: item?.id || item?.itemId || item?.key || `item-${index + 1}`,
+          no: String(item?.no ?? index + 1),
+          name: item?.name ?? "",
+          kind: item?.kind ?? item?.category ?? "",
+          totalQty: Math.max(0, Math.floor(Number(item?.totalQty ?? item?.quantity ?? 0) || 0)),
+        }));
+      }
+      state.boxes = Array.isArray(boxes)
+        ? boxes.map((box, index) => ({
+            boxId: box?.boxId || box?.id || `box-${index + 1}`,
+            name: box?.name || `Packing ${String(index + 1).padStart(2, '0')}`,
+            dimensions: {
+              L: Number(box?.dimensions?.L ?? box?.length ?? 0) || 0,
+              W: Number(box?.dimensions?.W ?? box?.width ?? 0) || 0,
+              H: Number(box?.dimensions?.H ?? box?.height ?? 0) || 0,
+              CBM: Number(box?.dimensions?.CBM ?? box?.cbm ?? 0) || 0,
+            },
+            weightKg: Number(box?.weightKg ?? box?.weight ?? 0) || 0,
+            contents: Array.isArray(box?.contents)
+              ? box.contents
+                  .map((content) => ({
+                    itemId: content?.itemId || content?.id || content?.key || '',
+                    qty: Math.max(0, Math.floor(Number(content?.qty ?? content?.quantity ?? 0) || 0)),
+                  }))
+                  .filter((content) => content.itemId)
+              : [],
+            note: box?.note ?? '',
+          }))
+        : [];
+      rerender({ updateItems: true });
+    };
+
     state.openForm = (options) => openForm(options || {});
     state.closeForm = (options) => closeForm(options || {});
 
@@ -3419,8 +4054,21 @@ function openNewDialog() {
       return;
     }
     const values = collectFormValues(form);
-    addDraftEntry(values);
+    const packingState = form._packingState;
+    const packingData = packingState
+      ? {
+          items: Array.isArray(packingState.items) ? packingState.items : [],
+          boxes: Array.isArray(packingState.boxes) ? packingState.boxes : [],
+        }
+      : null;
+    addDraftEntry(values, {
+      stepIndex: currentStep,
+      totalSteps,
+      packingData,
+    });
     dialog.close();
+    renderRows(getCombinedRows(lastFetchedItems), { page: currentPage });
+    updateContinueButtonVisibility();
   };
 
   const handleCancel = () => {
@@ -3467,6 +4115,230 @@ function openNewDialog() {
   setupPackingStep();
   toggleExportTypeDetail();
 
+  const applyInitialFieldValues = (fields = {}) => {
+    if (!fields || typeof fields !== "object") return;
+
+    const setFieldValue = (name, value, { triggerChange = false } = {}) => {
+      const field = form.elements[name];
+      if (!field) return;
+      const emitChange = (el) => {
+        if (!triggerChange) return;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      if (field instanceof RadioNodeList) {
+        const nodes = Array.from(field);
+        if (!nodes.length) return;
+        const values = Array.isArray(value)
+          ? value.map((val) => (val === undefined || val === null ? "" : String(val)))
+          : [value === undefined || value === null ? "" : String(value)];
+        nodes.forEach((node) => {
+          if (!(node instanceof HTMLInputElement)) return;
+          if (node.type === "radio") {
+            node.checked = values.includes(node.value);
+          } else if (node.type === "checkbox") {
+            node.checked =
+              values.includes(node.value) || (values.includes("true") && node.value === "on");
+          } else {
+            node.value = values[0] ?? "";
+          }
+          emitChange(node);
+        });
+        return;
+      }
+      if (field instanceof HTMLInputElement) {
+        if (field.type === "checkbox") {
+          field.checked = Boolean(value);
+        } else {
+          field.value = value === undefined || value === null ? "" : String(value);
+        }
+        emitChange(field);
+        return;
+      }
+      if (field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement) {
+        field.value = value === undefined || value === null ? "" : String(value);
+        emitChange(field);
+      }
+    };
+
+    const setSimpleSelectValue = (name, value) => {
+      const select = form.querySelector(`select[name="${name}"]`);
+      if (!(select instanceof HTMLSelectElement)) return;
+      ensureSimpleCountryOptions(select);
+      const normalized = value === undefined || value === null ? "" : String(value);
+      select.value = normalized;
+      updateSimpleSelectDial(select);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    if (fields.exportType !== undefined) {
+      setFieldValue("exportType", fields.exportType, { triggerChange: true });
+    }
+    if (fields.exportTypeDetail !== undefined) {
+      setFieldValue("exportTypeDetail", fields.exportTypeDetail);
+    }
+    if (fields.projectName !== undefined) {
+      setFieldValue("projectName", fields.projectName);
+    }
+    if (fields.projectCode !== undefined) {
+      setFieldValue("projectCode", fields.projectCode);
+    }
+    if (fields.managerName !== undefined) {
+      setFieldValue("managerName", fields.managerName);
+    }
+    if (fields.managerDepartment !== undefined) {
+      setFieldValue("managerDepartment", fields.managerDepartment);
+    }
+    if (fields.managerPhone !== undefined) {
+      setFieldValue("managerPhone", fields.managerPhone);
+    }
+    if (fields.managerEmail !== undefined) {
+      setFieldValue("managerEmail", fields.managerEmail);
+    }
+    if (fields.importCompanyName !== undefined) {
+      setFieldValue("importCompanyName", fields.importCompanyName);
+    }
+    if (fields.importAddress !== undefined) {
+      setFieldValue("importAddress", fields.importAddress);
+    }
+    if (fields.importCountry !== undefined) {
+      setSimpleSelectValue("importCountry", fields.importCountry);
+    }
+    if (fields.importCountryCode !== undefined) {
+      setFieldValue("importCountryCode", fields.importCountryCode);
+    }
+    if (fields.importPhone !== undefined) {
+      setFieldValue("importPhone", fields.importPhone);
+    }
+    if (fields.importContactName !== undefined) {
+      setFieldValue("importContactName", fields.importContactName);
+    }
+    if (fields.importContactPhone !== undefined) {
+      setFieldValue("importContactPhone", fields.importContactPhone);
+    }
+    if (fields.importEmail !== undefined) {
+      setFieldValue("importEmail", fields.importEmail);
+    }
+    if (fields.importEtc !== undefined) {
+      setFieldValue("importEtc", fields.importEtc);
+    }
+    if (fields.notifySameAsImporter !== undefined) {
+      setFieldValue("notifySameAsImporter", fields.notifySameAsImporter, { triggerChange: true });
+    }
+    if (fields.notifyCompanyName !== undefined) {
+      setFieldValue("notifyCompanyName", fields.notifyCompanyName);
+    }
+    if (fields.notifyAddress !== undefined) {
+      setFieldValue("notifyAddress", fields.notifyAddress);
+    }
+    if (fields.notifyCountry !== undefined) {
+      setSimpleSelectValue("notifyCountry", fields.notifyCountry);
+    }
+    if (fields.notifyCountryCode !== undefined) {
+      setFieldValue("notifyCountryCode", fields.notifyCountryCode);
+    }
+    if (fields.notifyPhone !== undefined) {
+      setFieldValue("notifyPhone", fields.notifyPhone);
+    }
+    if (fields.notifyContactName !== undefined) {
+      setFieldValue("notifyContactName", fields.notifyContactName);
+    }
+    if (fields.notifyContactPhone !== undefined) {
+      setFieldValue("notifyContactPhone", fields.notifyContactPhone);
+    }
+    if (fields.notifyEmail !== undefined) {
+      setFieldValue("notifyEmail", fields.notifyEmail);
+    }
+    if (fields.notifyEtc !== undefined) {
+      setFieldValue("notifyEtc", fields.notifyEtc);
+    }
+    if (fields.originCountry !== undefined) {
+      setSimpleSelectValue("originCountry", fields.originCountry);
+    }
+    if (fields.destinationCountry !== undefined) {
+      setSimpleSelectValue("destinationCountry", fields.destinationCountry);
+    }
+    if (fields.dispatchDate !== undefined) {
+      setFieldValue("dispatchDate", fields.dispatchDate, { triggerChange: true });
+    }
+    if (fields.loadingDate !== undefined) {
+      setFieldValue("loadingDate", fields.loadingDate, { triggerChange: true });
+    }
+    if (fields.transportMode !== undefined) {
+      setFieldValue("transportMode", fields.transportMode, { triggerChange: true });
+    }
+    if (fields.transportOther !== undefined) {
+      setFieldValue("transportOther", fields.transportOther);
+    }
+    if (fields.incoterms !== undefined) {
+      setFieldValue("incoterms", fields.incoterms, { triggerChange: true });
+    }
+    if (fields.incotermsOther !== undefined) {
+      setFieldValue("incotermsOther", fields.incotermsOther);
+    }
+    if (fields.paymentTerms !== undefined) {
+      setFieldValue("paymentTerms", fields.paymentTerms);
+    }
+    if (fields.strategicFlag !== undefined) {
+      const value = fields.strategicFlag === undefined || fields.strategicFlag === null
+        ? ""
+        : String(fields.strategicFlag);
+      strategicOptions.forEach((option) => {
+        option.checked = option.value === value;
+      });
+      if (strategicValueInput) {
+        strategicValueInput.value = value;
+      }
+      syncStrategicDependencies({ silent: true });
+    }
+    if (fields.strategicExpertCertificate !== undefined) {
+      const certificateValue = fields.strategicExpertCertificate;
+      const expertState = expertSearchContainer?._expertState;
+      if (certificateValue) {
+        const targetCertificate = EXPERT_CERTIFICATES.find(
+          (item) =>
+            item.id === certificateValue ||
+            item.name === certificateValue
+        );
+        if (targetCertificate) {
+          if (expertState?.setEnabled) {
+            expertState.setEnabled(true);
+          }
+          if (expertState?.selectCertificate) {
+            expertState.selectCertificate(targetCertificate, { silent: true });
+          }
+        }
+      } else if (expertState?.clearSelection) {
+        expertState.clearSelection({ silent: true });
+      }
+    }
+  };
+
+  if (fieldValues) {
+    applyInitialFieldValues(fieldValues);
+  }
+
+  if (Array.isArray(itemRowsData) && itemRowsData.length) {
+    form._itemTableState?.setRows(itemRowsData);
+  }
+
+  if (packingData) {
+    form._packingState?.setData(packingData);
+  }
+
+  if (fieldValues) {
+    syncStrategicDependencies({ silent: true });
+    toggleExportTypeDetail();
+    if (transportModeSelect instanceof HTMLSelectElement) {
+      transportModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (incotermsSelect instanceof HTMLSelectElement) {
+      incotermsSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    setupInlineCalendar();
+    updateStepActionState();
+  }
+
   form.onsubmit = async (e) => {
     e.preventDefault();
     if (currentStep !== totalSteps - 1) {
@@ -3495,8 +4367,8 @@ function openNewDialog() {
     }
   };
 
-  dialog.showModal();
   showStep(currentStep);
+  dialog.showModal();
 }
 
 /* Router */
