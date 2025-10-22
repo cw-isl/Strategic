@@ -128,6 +128,30 @@ function formatInvoiceNumber({ code, date, sequence, existingNumber } = {}) {
   return `${normalizedCode}${dateKey}_${seqPart}`;
 }
 
+function resolveInvoiceDownloadKey(row = {}) {
+  if (!row || typeof row !== "object") return "";
+  const candidates = [
+    row.id,
+    row._id,
+    row.invoiceNumber,
+    row._computedInvoiceNumber,
+    row.projectCode,
+    row.contractNumber,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const str = String(candidate).trim();
+    if (str) return str;
+  }
+  return "";
+}
+
+function buildInvoiceDownloadUrl(row = {}) {
+  const key = resolveInvoiceDownloadKey(row);
+  if (!key) return "";
+  return `/api/exports/${encodeURIComponent(key)}/invoice.pdf`;
+}
+
 function resolveInvoiceSequence(row = {}) {
   if (!row || typeof row !== "object") return null;
   const candidates = [
@@ -1115,7 +1139,15 @@ function renderRows(rows = [], meta = {}) {
       }
       if (invoiceNumber) {
         const numberText = escapeHtml(String(invoiceNumber));
-        invoicePieces.push(numberText);
+        const downloadUrl = buildInvoiceDownloadUrl(row);
+        if (downloadUrl) {
+          const safeUrl = escapeHtml(downloadUrl);
+          invoicePieces.push(
+            `<a href="${safeUrl}" class="invoice-link" download>${numberText}</a>`
+          );
+        } else {
+          invoicePieces.push(numberText);
+        }
         if (invoiceInfo?.label) {
           invoicePieces.push(escapeHtml(String(invoiceInfo.label)));
         }

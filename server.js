@@ -6,6 +6,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 
+import { createInvoicePdfBuffer } from "./lib/invoice-pdf.js";
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -217,6 +219,191 @@ const exportsData = [
   },
 ];
 
+const parsePositiveInteger = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const num = Number(value);
+  if (!Number.isFinite(num)) return null;
+  const int = Math.floor(num);
+  if (int <= 0) return null;
+  return int;
+};
+
+const formatInvoiceDateKey = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const eightDigit = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (eightDigit) {
+      return `${eightDigit[1]}${eightDigit[2]}${eightDigit[3]}`;
+    }
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return `${isoMatch[1]}${isoMatch[2]}${isoMatch[3]}`;
+    }
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+};
+
+const extractSequenceFromInvoiceNumber = (invoiceNumber) => {
+  if (typeof invoiceNumber !== "string") return null;
+  const trimmed = invoiceNumber.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^[A-Z]{2,}\d{8}_(\d{2,})$/i);
+  if (!match) return null;
+  return parsePositiveInteger(match[1]);
+};
+
+const resolveExistingInvoiceNumber = (row = {}) => {
+  if (!row || typeof row !== "object") return "";
+  const candidates = [
+    row.invoiceNumber,
+    row.invoiceNo,
+    row.invoice_no,
+    row.invoiceNumberFull,
+    row.invoice_number_full,
+    row._computedInvoiceNumber,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const str = String(candidate).trim();
+    if (str) return str;
+  }
+  return "";
+};
+
+const resolveInvoiceCode = (row = {}) => {
+  if (!row || typeof row !== "object") return "";
+  const candidates = [
+    row.invoiceCode,
+    row.invoice_code,
+    row.invoiceTypeCode,
+    row.invoice_type_code,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const str = String(candidate).trim();
+    if (str) return str;
+  }
+  const existingNumber = resolveExistingInvoiceNumber(row);
+  if (existingNumber) {
+    const match = existingNumber.match(/^([A-Z]{2,})/i);
+    if (match) return match[1].toUpperCase();
+  }
+  return "";
+};
+
+const resolveInvoiceSequence = (row = {}) => {
+  if (!row || typeof row !== "object") return null;
+  const candidates = [
+    row.invoiceSequence,
+    row.invoice_sequence,
+    row.invoiceSeq,
+    row.invoice_seq,
+    row.invoiceSequenceNumber,
+    row.invoice_sequence_number,
+    row.invoiceNumberSequence,
+    row.invoice_number_sequence,
+    row.invoiceSerial,
+    row.invoice_serial,
+    row.invoiceOrder,
+    row.invoice_order,
+    row._computedInvoiceSequence,
+  ];
+  for (const candidate of candidates) {
+    const parsed = parsePositiveInteger(candidate);
+    if (parsed) return parsed;
+  }
+  const fromNumber = extractSequenceFromInvoiceNumber(resolveExistingInvoiceNumber(row));
+  if (fromNumber) return fromNumber;
+  return null;
+};
+
+const resolveInvoiceDateValue = (row = {}) => {
+  if (!row || typeof row !== "object") return null;
+  return (
+    row.dispatchDate ||
+    row.shipmentDate ||
+    (row.shipment && (row.shipment.dispatchDate || row.shipment.shipmentDate)) ||
+    row.createdAt ||
+    null
+  );
+};
+
+const formatInvoiceNumber = ({ code, date, sequence, existingNumber } = {}) => {
+  const existing = typeof existingNumber === "string" ? existingNumber.trim() : "";
+  if (existing && /^[A-Z]{2,}\d{8}_(\d{2,})$/i.test(existing)) {
+    return existing.toUpperCase();
+  }
+  const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
+  if (!normalizedCode) return "";
+  const dateKey = formatInvoiceDateKey(date) || formatInvoiceDateKey(Date.now());
+  let resolvedSeq = parsePositiveInteger(sequence);
+  if (!resolvedSeq && existing) {
+    resolvedSeq = extractSequenceFromInvoiceNumber(existing);
+  }
+  const seqPart = resolvedSeq ? String(resolvedSeq).padStart(2, "0") : "";
+  if (!dateKey && !seqPart) {
+    return normalizedCode;
+  }
+  if (!seqPart) {
+    return `${normalizedCode}${dateKey}`;
+  }
+  if (!dateKey) {
+    return `${normalizedCode}_${seqPart}`;
+  }
+  return `${normalizedCode}${dateKey}_${seqPart}`;
+};
+
+const ensureInvoiceMetadata = (row = {}, { allocateSequence = true } = {}) => {
+  if (!row || typeof row !== "object") return { number: "", sequence: null };
+  let code = resolveInvoiceCode(row);
+  if (!code) {
+    code = "INV";
+  }
+  const dateValue = resolveInvoiceDateValue(row) || Date.now();
+  const existingNumber = resolveExistingInvoiceNumber(row);
+  let sequence = resolveInvoiceSequence(row);
+
+  const dataset = exportsData;
+  const dateKey = formatInvoiceDateKey(dateValue) || formatInvoiceDateKey(Date.now());
+
+  if ((!sequence || !Number.isFinite(sequence)) && allocateSequence && code && dateKey) {
+    let maxSeq = 0;
+    for (const item of dataset) {
+      if (!item || typeof item !== "object" || item === row) continue;
+      const itemCode = resolveInvoiceCode(item);
+      if (!itemCode || itemCode.trim().toUpperCase() !== code.trim().toUpperCase()) continue;
+      const itemDateKey = formatInvoiceDateKey(resolveInvoiceDateValue(item));
+      if (itemDateKey !== dateKey) continue;
+      const itemSeq = resolveInvoiceSequence(item);
+      if (itemSeq && itemSeq > maxSeq) {
+        maxSeq = itemSeq;
+      }
+    }
+    sequence = maxSeq + 1;
+  }
+
+  const number = formatInvoiceNumber({ code, date: dateValue, sequence, existingNumber });
+  const normalizedSequence = sequence || extractSequenceFromInvoiceNumber(number) || null;
+
+  if (number) {
+    row.invoiceNumber = number;
+  }
+  if (normalizedSequence) {
+    row.invoiceSequence = normalizedSequence;
+  }
+
+  return { number, sequence: normalizedSequence, code, dateKey };
+};
+
+exportsData.forEach((row) => ensureInvoiceMetadata(row, { allocateSequence: false }));
+
 /** --- 보안/성능 기본기 --- */
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
@@ -268,114 +455,259 @@ app.get("/api/exports", (req, res) => {
 
 // 신규 등록
 app.post("/api/exports", (req, res) => {
-  const {
-    item,
-    qty,
-    unitPrice,
-    country,
-    status,
-    shipmentType,
-    shipmentTypeRaw,
-    shipmentDate,
-    dispatchDate,
-    shipmentPurpose,
-    projectName,
-    projectCode,
-    contractNumber,
-    itemSpec,
-    unit,
-    client,
-    clientCountry,
-    clientManager,
-    endUser,
-    endUserCountry,
-    endUse,
-    transportMode,
-    departureDate,
-    department,
-    manager,
-    managerEmail,
-    strategicFlag,
-    strategicCategory,
-    strategicBasis,
-    permitType,
-    permitNumber,
-    declarationNumber,
-    plStatus,
-    invoiceStatus,
-    invoiceCode,
-    invoiceCodeLabel,
-    invoiceNote,
-    permitStatus,
-    declarationStatus,
-    usageStatus,
-    blStatus,
-    fileNote,
-    note,
-    companyName,
-    businessNumber,
-    contactName,
-    contactPhone,
-  } = req.body || {};
-  if (!item || !country || !status) return res.status(400).json({ ok:false, error:"필수 항목 누락" });
-  const qn = Number(qty), up = Number(unitPrice);
-  if (Number.isNaN(qn) || Number.isNaN(up)) return res.status(400).json({ ok:false, error:"수량/단가 숫자 필요" });
+  const payloadRaw = req.body;
+  if (!payloadRaw || typeof payloadRaw !== "object") {
+    return res.status(400).json({ ok: false, error: "잘못된 요청" });
+  }
 
-  const resolvedShipmentDate = dispatchDate || shipmentDate || "";
+  const payload = JSON.parse(JSON.stringify(payloadRaw));
+  const { item, qty, unitPrice, country, status } = payload;
 
-  const row = {
-    id: seq++,
-    item: String(item),
-    qty: Math.max(0, Math.floor(qn)),
-    unitPrice: Math.max(0, Number(up)),
-    country: String(country).toUpperCase(),
-    status: String(status),
-    createdAt: Date.now(),
-    shipmentType: shipmentType ? String(shipmentType) : "",
-    shipmentTypeRaw: shipmentTypeRaw ? String(shipmentTypeRaw) : "",
-    shipmentDate: resolvedShipmentDate ? String(resolvedShipmentDate) : "",
-    dispatchDate: resolvedShipmentDate ? String(resolvedShipmentDate) : "",
-    shipmentPurpose: shipmentPurpose ? String(shipmentPurpose) : "",
-    projectName: projectName ? String(projectName) : "",
-    projectCode: projectCode ? String(projectCode) : "",
-    contractNumber: contractNumber ? String(contractNumber) : "",
-    itemSpec: itemSpec ? String(itemSpec) : "",
-    unit: unit ? String(unit) : "",
-    client: client ? String(client) : "",
-    clientCountry: clientCountry ? String(clientCountry) : "",
-    clientManager: clientManager ? String(clientManager) : "",
-    endUser: endUser ? String(endUser) : "",
-    endUserCountry: endUserCountry ? String(endUserCountry) : "",
-    endUse: endUse ? String(endUse) : "",
-    transportMode: transportMode ? String(transportMode) : "",
-    departureDate: departureDate ? String(departureDate) : "",
-    department: department ? String(department) : "",
-    manager: manager ? String(manager) : "",
-    managerEmail: managerEmail ? String(managerEmail) : "",
-    strategicFlag: strategicFlag ? String(strategicFlag) : "",
-    strategicCategory: strategicCategory ? String(strategicCategory) : "",
-    strategicBasis: strategicBasis ? String(strategicBasis) : "",
-    permitType: permitType ? String(permitType) : "",
-    permitNumber: permitNumber ? String(permitNumber) : "",
-    declarationNumber: declarationNumber ? String(declarationNumber) : "",
-    plStatus: plStatus ? String(plStatus) : "",
-    invoiceStatus: invoiceStatus ? String(invoiceStatus) : "",
-    invoiceCode: invoiceCode ? String(invoiceCode) : "",
-    invoiceCodeLabel: invoiceCodeLabel ? String(invoiceCodeLabel) : "",
-    invoiceNote: invoiceNote ? String(invoiceNote) : "",
-    permitStatus: permitStatus ? String(permitStatus) : "",
-    declarationStatus: declarationStatus ? String(declarationStatus) : "",
-    usageStatus: usageStatus ? String(usageStatus) : "",
-    blStatus: blStatus ? String(blStatus) : "",
-    fileNote: fileNote ? String(fileNote) : "",
-    note: note ? String(note) : "",
-    companyName: companyName ? String(companyName) : "",
-    businessNumber: businessNumber ? String(businessNumber) : "",
-    contactName: contactName ? String(contactName) : "",
-    contactPhone: contactPhone ? String(contactPhone) : "",
+  if (!item || !country || !status) {
+    return res.status(400).json({ ok: false, error: "필수 항목 누락" });
+  }
+
+  const qn = Number(qty);
+  const up = Number(unitPrice);
+  if (Number.isNaN(qn) || Number.isNaN(up)) {
+    return res.status(400).json({ ok: false, error: "수량/단가 숫자 필요" });
+  }
+
+  const row = { ...payload };
+  row.id = seq++;
+  row.item = String(item);
+  row.qty = Math.max(0, Math.floor(qn));
+  row.unitPrice = Math.max(0, Number(up));
+  row.country = String(country).toUpperCase();
+  row.status = String(status);
+  row.createdAt = Date.now();
+
+  const assignString = (key, value) => {
+    row[key] = value ? String(value) : "";
   };
+
+  const resolvedShipmentDate = payload.dispatchDate || payload.shipmentDate || "";
+  if (resolvedShipmentDate) {
+    const dateStr = String(resolvedShipmentDate);
+    row.dispatchDate = dateStr;
+    row.shipmentDate = dateStr;
+  }
+
+  assignString("shipmentType", payload.shipmentType);
+  assignString("shipmentTypeRaw", payload.shipmentTypeRaw);
+  assignString("shipmentPurpose", payload.shipmentPurpose);
+  assignString("projectName", payload.projectName);
+  assignString("projectCode", payload.projectCode);
+  assignString("contractNumber", payload.contractNumber);
+  assignString("itemSpec", payload.itemSpec);
+  assignString("unit", payload.unit);
+  assignString("client", payload.client);
+  assignString("clientCountry", payload.clientCountry);
+  assignString("clientManager", payload.clientManager);
+  assignString("endUser", payload.endUser);
+  assignString("endUserCountry", payload.endUserCountry);
+  assignString("endUse", payload.endUse);
+  assignString("transportMode", payload.transportMode);
+  assignString("departureDate", payload.departureDate);
+  assignString("department", payload.department);
+  assignString("manager", payload.manager);
+  assignString("managerEmail", payload.managerEmail);
+  assignString("strategicFlag", payload.strategicFlag);
+  assignString("strategicCategory", payload.strategicCategory);
+  assignString("strategicBasis", payload.strategicBasis);
+  assignString("permitType", payload.permitType);
+  assignString("permitNumber", payload.permitNumber);
+  assignString("declarationNumber", payload.declarationNumber);
+  assignString("plStatus", payload.plStatus);
+  assignString("invoiceStatus", payload.invoiceStatus);
+  assignString("invoiceCode", payload.invoiceCode);
+  assignString("invoiceCodeLabel", payload.invoiceCodeLabel);
+  assignString("invoiceNote", payload.invoiceNote);
+  assignString("permitStatus", payload.permitStatus);
+  assignString("declarationStatus", payload.declarationStatus);
+  assignString("usageStatus", payload.usageStatus);
+  assignString("blStatus", payload.blStatus);
+  assignString("fileNote", payload.fileNote);
+  assignString("note", payload.note);
+  assignString("companyName", payload.companyName);
+  assignString("businessNumber", payload.businessNumber);
+  assignString("contactName", payload.contactName);
+  assignString("contactPhone", payload.contactPhone);
+  assignString("originCountry", payload.originCountry);
+  assignString("destinationCountry", payload.destinationCountry);
+  assignString("loadingDate", payload.loadingDate);
+  assignString("transportOther", payload.transportOther);
+  assignString("incoterms", payload.incoterms);
+  assignString("incotermsOther", payload.incotermsOther);
+  assignString("paymentTerms", payload.paymentTerms);
+  assignString("managerName", payload.managerName);
+  assignString("managerDepartment", payload.managerDepartment);
+  assignString("managerPhone", payload.managerPhone);
+  assignString("importCompanyName", payload.importCompanyName);
+  assignString("importAddress", payload.importAddress);
+  assignString("importCountry", payload.importCountry);
+  assignString("importCountryCode", payload.importCountryCode);
+  assignString("importPhone", payload.importPhone);
+  assignString("importContactName", payload.importContactName);
+  assignString("importContactPhone", payload.importContactPhone);
+  assignString("importEmail", payload.importEmail);
+  assignString("importEtc", payload.importEtc);
+  row.notifySameAsImporter = Boolean(payload.notifySameAsImporter);
+  assignString("notifyCompanyName", payload.notifyCompanyName);
+  assignString("notifyAddress", payload.notifyAddress);
+  assignString("notifyCountry", payload.notifyCountry);
+  assignString("notifyCountryCode", payload.notifyCountryCode);
+  assignString("notifyPhone", payload.notifyPhone);
+  assignString("notifyContactName", payload.notifyContactName);
+  assignString("notifyContactPhone", payload.notifyContactPhone);
+  assignString("notifyEmail", payload.notifyEmail);
+  assignString("notifyEtc", payload.notifyEtc);
+
+  if (!row.requester || typeof row.requester !== "object") {
+    row.requester = {
+      name: row.managerName,
+      department: row.managerDepartment,
+      phone: row.managerPhone,
+      email: row.managerEmail,
+    };
+  }
+
+  if (!row.importer || typeof row.importer !== "object") {
+    row.importer = {
+      companyName: row.importCompanyName,
+      address: row.importAddress,
+      country: row.importCountry,
+      countryCode: row.importCountryCode,
+      phone: row.importPhone,
+      contactName: row.importContactName,
+      contactPhone: row.importContactPhone,
+      email: row.importEmail,
+      etc: row.importEtc,
+    };
+  }
+
+  if (!row.notifyParty || typeof row.notifyParty !== "object") {
+    row.notifyParty = {
+      sameAsImporter: row.notifySameAsImporter,
+      companyName: row.notifyCompanyName,
+      address: row.notifyAddress,
+      country: row.notifyCountry,
+      countryCode: row.notifyCountryCode,
+      phone: row.notifyPhone,
+      contactName: row.notifyContactName,
+      contactPhone: row.notifyContactPhone,
+      email: row.notifyEmail,
+      etc: row.notifyEtc,
+    };
+  }
+
+  if (!row.shipment || typeof row.shipment !== "object") {
+    row.shipment = {
+      originCountry: row.originCountry,
+      destinationCountry: row.destinationCountry,
+      dispatchDate: row.dispatchDate,
+      loadingDate: row.loadingDate,
+      transportMode: row.transportMode,
+      transportModeRaw: payload.transportMode,
+      incoterms: row.incoterms,
+      incotermsRaw: payload.incoterms,
+      paymentTerms: row.paymentTerms,
+    };
+  }
+
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  row.items = items;
+
+  const parseAmount = (value) => {
+    if (value === undefined || value === null || value === "") return 0;
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    const numeric = Number(String(value).replace(/,/g, ""));
+    return Number.isFinite(numeric) ? numeric : 0;
+  };
+
+  const computedTotal = items.reduce((sum, item) => {
+    if (!item || typeof item !== "object") return sum;
+    const total = parseAmount(item.total);
+    if (total) return sum + total;
+    const qtyValue = parseAmount(item.quantity);
+    const unitValue = parseAmount(item.unitPrice);
+    if (qtyValue && unitValue) {
+      return sum + qtyValue * unitValue;
+    }
+    return sum;
+  }, 0);
+
+  const existingTotal = parseAmount(row.totalAmount);
+  if (computedTotal > 0 && existingTotal <= 0) {
+    row.totalAmount = Number(computedTotal.toFixed(2));
+  } else if (existingTotal > 0) {
+    row.totalAmount = Number(existingTotal.toFixed(2));
+  }
+
+  if (!row.currency) {
+    const firstCurrency = items.find((item) => item && item.currency)?.currency;
+    if (firstCurrency) {
+      row.currency = String(firstCurrency);
+    }
+  }
+
+  const invoiceMeta = ensureInvoiceMetadata(row);
+  if (invoiceMeta.number) {
+    row.invoiceGeneratedAt = Date.now();
+    if (!row.invoiceStatus) {
+      row.invoiceStatus = "자동생성";
+    }
+  }
+
   exportsData.push(row);
   res.status(201).json({ ok: true, item: row });
+});
+
+app.get("/api/exports/:id/invoice.pdf", (req, res) => {
+  const { id } = req.params;
+  const idStr = String(id ?? "").trim();
+  if (!idStr) {
+    return res.status(404).json({ ok: false, error: "대상을 찾을 수 없습니다." });
+  }
+
+  const target = exportsData.find((row) => {
+    if (!row || typeof row !== "object") return false;
+    const candidates = [
+      row.id,
+      row._id,
+      row._entryId,
+      row.projectCode,
+      row.contractNumber,
+      row.invoiceNumber,
+    ];
+    return candidates.some((candidate) => {
+      if (candidate === undefined || candidate === null) return false;
+      return String(candidate).trim() === idStr;
+    });
+  });
+
+  if (!target) {
+    return res.status(404).json({ ok: false, error: "대상을 찾을 수 없습니다." });
+  }
+
+  const invoiceMeta = ensureInvoiceMetadata(target);
+  if (!invoiceMeta.number) {
+    return res.status(404).json({ ok: false, error: "Invoice 정보가 없습니다." });
+  }
+
+  target.invoiceGeneratedAt = target.invoiceGeneratedAt || Date.now();
+  if (!target.invoiceStatus) {
+    target.invoiceStatus = "자동생성";
+  }
+
+  const pdfBuffer = createInvoicePdfBuffer(target, {
+    invoiceNumber: invoiceMeta.number,
+  });
+
+  const safeName = (invoiceMeta.number || `invoice-${idStr}`).replace(/[^A-Za-z0-9_-]/g, "_");
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${safeName}.pdf"`);
+  res.send(pdfBuffer);
 });
 
 /** --- 캐시 비활성화 유틸 --- */
