@@ -12,9 +12,30 @@ let lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 let lastServerMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 let lastFetchedItems = [];
 let lastCombinedRows = [];
+let lastFilteredCount = 0;
 const draftEntries = [];
 let draftSeq = -1;
 let selectionHandlersInitialized = false;
+const INVOICE_FILTER_ALL = "all";
+const INVOICE_FILTER_MISSING_ITEMS = "missing-items";
+const INVOICE_FILTER_NO_CODE = "no-code";
+let currentInvoiceFilter = INVOICE_FILTER_ALL;
+
+const EXPORT_TYPE_INVOICE_CODES = {
+  정상판매: { code: "SEA", label: "수출계약" },
+  "A/S": { code: "SEC", label: "A/S" },
+  BMT: { code: "SAD", label: "BMT" },
+  장애교체: { code: "SET", label: "장애교체" },
+  TEST: { code: "SRT", label: "TEST" },
+  Stock: { code: "SST", label: "Stock" },
+  임대: { code: "SCS", label: "임대" },
+  유상임대: { code: "SCD", label: "유상임대" },
+  "기타 장애교체": { code: "SGE", label: "기타 장애교체" },
+  "기타 A/S": { code: "SGA", label: "기타 A/S" },
+  제조사샘플: { code: "SMP", label: "제조사샘플" },
+  개발용샘플: { code: "SDE", label: "개발용샘플" },
+  기타: { code: "SET", label: "기타" },
+};
 
 const toFlagEmoji = (countryCode = "") => {
   if (typeof countryCode !== "string" || countryCode.length !== 2) return "🏳";
@@ -235,6 +256,13 @@ function mapRowToFormValues(row = {}) {
   setField("exportType", exportType);
   const exportTypeDetail = row.exportTypeDetail ?? (exportType === "기타" ? row.shipmentPurpose ?? "" : "");
   setField("exportTypeDetail", exportTypeDetail);
+  const invoiceInfo =
+    resolveInvoiceInfo(row) ??
+    resolveInvoiceCodeFromType(exportType, exportTypeDetail ?? row.shipmentPurpose ?? "");
+  setField("invoiceCode", invoiceInfo?.code ?? "");
+  setField("invoiceCodeLabel", invoiceInfo?.label ?? "");
+  const invoiceNote = row.invoiceNote ?? invoiceInfo?.label ?? "";
+  setField("exportNote", invoiceNote);
 
   setField("projectName", row.projectName ?? row.projectNameDisplay ?? "");
   setField("projectCode", row.projectCode ?? row.projectCodeDisplay ?? "");
@@ -613,6 +641,7 @@ function renderExport() {
 
   currentPage = 1;
   currentQuery = "";
+  currentInvoiceFilter = INVOICE_FILTER_ALL;
   lastMeta = { totalPages: 0, totalCount: 0, pageSize: PAGE_SIZE };
 
   app.innerHTML = `
@@ -635,6 +664,23 @@ function renderExport() {
       </div>
       <div class="search-actions">
         <button id="searchBtn" class="btn" type="button">검색</button>
+      </div>
+      <div class="invoice-filter-group" data-invoice-filter-group role="toolbar" aria-label="Invoice 코드 필터">
+        <button type="button" class="btn filter-btn" data-invoice-filter="all" aria-pressed="true">전체</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="missing-items">항목없음</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="no-code">Invoice 없음</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEA" title="수출계약">SEA</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEC" title="A/S">SEC</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SAD" title="BMT">SAD</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SET" title="장애교체/기타">SET</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SRT" title="TEST">SRT</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SST" title="Stock">SST</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SCS" title="임대">SCS</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SCD" title="유상임대">SCD</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SGE" title="기타 장애교체">SGE</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SGA" title="기타 A/S">SGA</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SMP" title="제조사샘플">SMP</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SDE" title="개발용샘플">SDE</button>
       </div>
     </section>
 
@@ -717,6 +763,11 @@ function renderExport() {
       fetchAndRender({ query: searchInput.value });
     }
   });
+  const invoiceFilterGroup = $("[data-invoice-filter-group]");
+  if (invoiceFilterGroup) {
+    invoiceFilterGroup.addEventListener("click", handleInvoiceFilterClick);
+    updateInvoiceFilterButtons();
+  }
   $("#newBtn").addEventListener("click", openNewDialog);
   const continueButton = $("#continueBtn");
   if (continueButton) {
@@ -808,17 +859,20 @@ async function fetchAndRender({ page, query } = {}) {
 
 function renderRows(rows = [], meta = {}) {
   const tbody = $("#tbody");
-  if (!tbody) return;
+  if (!tbody) return [];
 
   const page = meta.page ?? 1;
   const pageSize = lastMeta.pageSize ?? PAGE_SIZE;
   const startIndex = (page - 1) * pageSize;
 
-  if (!rows.length) {
+  const filteredRows = applyInvoiceFilter(rows);
+  lastFilteredCount = filteredRows.length;
+
+  if (!filteredRows.length) {
     tbody.innerHTML = `<tr><td colspan="${EXPORT_TABLE_COLSPAN}" data-empty="true">데이터가 없습니다.</td></tr>`;
     lastCombinedRows = [];
     updateContinueButtonVisibility();
-    return;
+    return filteredRows;
   }
 
   const qtyFormatter = new Intl.NumberFormat("ko-KR");
@@ -828,7 +882,7 @@ function renderRows(rows = [], meta = {}) {
     return escapeHtml(String(value));
   };
 
-  tbody.innerHTML = rows
+  tbody.innerHTML = filteredRows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
       const shipmentDateValue =
@@ -865,9 +919,27 @@ function renderRows(rows = [], meta = {}) {
       const manager = managerRaw ? escapeHtml(String(managerRaw)) : "-";
       const statusRaw = row.status ? String(row.status) : "";
       const status = statusRaw ? escapeHtml(statusRaw) : "-";
-      const note = row.note ? escapeHtml(String(row.note)) : "-";
+      const noteRaw = row.invoiceNote ?? row.note ?? "";
+      const note = noteRaw ? escapeHtml(String(noteRaw)) : "-";
       const plStatus = docValue(row.plStatus);
       const invoiceStatus = docValue(row.invoiceStatus);
+      const invoiceInfo = resolveInvoiceInfo(row);
+      const hasItems = rowHasItemDetails(row);
+      const invoicePieces = [];
+      if (invoiceInfo && invoiceInfo.code) {
+        const codeText = escapeHtml(String(invoiceInfo.code));
+        const labelText = invoiceInfo.label ? escapeHtml(String(invoiceInfo.label)) : "";
+        invoicePieces.push(labelText ? `Invoice ${codeText} (${labelText})` : `Invoice ${codeText}`);
+      } else {
+        invoicePieces.push("Invoice");
+      }
+      if (invoiceStatus !== "-") {
+        invoicePieces.push(invoiceStatus);
+      }
+      if (!hasItems) {
+        invoicePieces.push("항목없음");
+      }
+      const invoiceDisplay = invoicePieces.filter(Boolean).join(" · ");
       const permitStatus = docValue(row.permitStatus);
       const declarationStatus = docValue(row.declarationStatus);
       const usageStatus = docValue(row.usageStatus);
@@ -897,7 +969,7 @@ function renderRows(rows = [], meta = {}) {
           ${td(manager, { align: "left", empty: manager === "-" })}
           ${td(selectBox, { align: "center" })}
           ${td(plStatus, { empty: plStatus === "-" })}
-          ${td(invoiceStatus, { empty: invoiceStatus === "-" })}
+          ${td(invoiceDisplay ? invoiceDisplay : "-", { empty: invoiceDisplay === "" })}
           ${td(permitStatus, { empty: permitStatus === "-" })}
           ${td(declarationStatus, { empty: declarationStatus === "-" })}
           ${td(usageStatus, { empty: usageStatus === "-" })}
@@ -910,9 +982,10 @@ function renderRows(rows = [], meta = {}) {
     })
     .join("");
 
-  lastCombinedRows = rows.slice();
+  lastCombinedRows = filteredRows.slice();
   ensureSelectionHandlers();
   updateContinueButtonVisibility();
+  return filteredRows;
 }
 
 function ensureSelectionHandlers() {
@@ -1082,6 +1155,113 @@ function getCombinedRows(serverRows = []) {
   return [...draftRows, ...serverRows];
 }
 
+function resolveInvoiceCodeFromType(exportType, exportTypeDetail) {
+  if (!exportType) return null;
+  const normalized = String(exportType).trim();
+  if (!normalized) return null;
+  const info = EXPORT_TYPE_INVOICE_CODES[normalized];
+  if (!info) return null;
+  const label =
+    normalized === "기타" && exportTypeDetail
+      ? String(exportTypeDetail).trim() || info.label
+      : info.label;
+  return { code: info.code, label };
+}
+
+function resolveInvoiceInfo(row = {}) {
+  if (!row || typeof row !== "object") return null;
+  const rawCode =
+    row.invoiceCode ??
+    row.invoice_code ??
+    row.invoiceTypeCode ??
+    row.invoice_type_code ??
+    null;
+  const rawLabel =
+    row.invoiceCodeLabel ??
+    row.invoiceLabel ??
+    row.invoiceNote ??
+    row.invoiceRemark ??
+    row.invoiceDescription ??
+    row.invoice_code_label ??
+    "";
+  if (rawCode) {
+    return {
+      code: String(rawCode).trim(),
+      label: rawLabel ? String(rawLabel).trim() : "",
+    };
+  }
+  const exportType = row.exportType ?? row.shipmentTypeRaw ?? row.shipmentType ?? "";
+  const exportTypeDetail = row.exportTypeDetail ?? row.shipmentPurpose ?? "";
+  const info = resolveInvoiceCodeFromType(exportType, exportTypeDetail);
+  if (info) return info;
+  return null;
+}
+
+function rowHasItemDetails(row = {}) {
+  if (!row || typeof row !== "object") return false;
+  if (Array.isArray(row.items) && row.items.length) {
+    return row.items.some((item) => {
+      if (!item || typeof item !== "object") return false;
+      return Object.values(item).some((value) => {
+        if (value === undefined || value === null) return false;
+        return String(value).trim() !== "";
+      });
+    });
+  }
+  return false;
+}
+
+function matchesInvoiceFilter(row, filter = currentInvoiceFilter) {
+  if (!row || typeof row !== "object") return false;
+  if (!filter || filter === INVOICE_FILTER_ALL) return true;
+  if (filter === INVOICE_FILTER_MISSING_ITEMS) {
+    return !rowHasItemDetails(row);
+  }
+  const info = resolveInvoiceInfo(row);
+  if (filter === INVOICE_FILTER_NO_CODE) {
+    return !(info && info.code);
+  }
+  if (!info || !info.code) return false;
+  return String(info.code).toUpperCase() === String(filter).toUpperCase();
+}
+
+function applyInvoiceFilter(rows = []) {
+  if (!Array.isArray(rows)) return [];
+  if (!rows.length) return [];
+  if (currentInvoiceFilter === INVOICE_FILTER_ALL) {
+    return rows.slice();
+  }
+  return rows.filter((row) => matchesInvoiceFilter(row, currentInvoiceFilter));
+}
+
+function updateInvoiceFilterButtons() {
+  const group = $(`[data-invoice-filter-group]`);
+  if (!group) return;
+  const buttons = $$('[data-invoice-filter]', group);
+  buttons.forEach((button) => {
+    const value = button.dataset.invoiceFilter ?? "";
+    const isActive = value === currentInvoiceFilter;
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    if (isActive) {
+      button.dataset.active = "true";
+    } else {
+      delete button.dataset.active;
+    }
+  });
+}
+
+function handleInvoiceFilterClick(event) {
+  const button = event.target.closest('[data-invoice-filter]');
+  if (!button) return;
+  const value = button.dataset.invoiceFilter ?? INVOICE_FILTER_ALL;
+  if (!value) return;
+  if (value === currentInvoiceFilter) return;
+  currentInvoiceFilter = value;
+  updateInvoiceFilterButtons();
+  renderRows(getCombinedRows(lastFetchedItems), { page: currentPage });
+  renderPagination();
+}
+
 function updateMeta() {
   const serverTotal = lastServerMeta.totalCount ?? 0;
   const serverPages = lastServerMeta.totalPages ?? 0;
@@ -1118,6 +1298,7 @@ function mapFormDataToPayload(data = {}) {
   const exportTypeDetail = trim(data.exportTypeDetail);
   const projectName = trim(data.projectName);
   const projectCode = trim(data.projectCode);
+  const exportNote = trim(data.exportNote);
   const strategicFlag = trim(data.strategicFlag);
   const strategicExpertCertificate = trim(data.strategicExpertCertificate);
   const managerName = trim(data.managerName);
@@ -1152,6 +1333,8 @@ function mapFormDataToPayload(data = {}) {
   const incoterms = trim(data.incoterms);
   const incotermsOther = trim(data.incotermsOther);
   const paymentTerms = trim(data.paymentTerms);
+  const invoiceCodeInputValue = trim(data.invoiceCode);
+  const invoiceCodeLabelInputValue = trim(data.invoiceCodeLabel);
 
   const toArray = (val) => {
     if (val === undefined || val === null) return [];
@@ -1206,6 +1389,10 @@ function mapFormDataToPayload(data = {}) {
   const resolvedTransportMode = transportMode === "기타" && transportOther ? transportOther : transportMode;
   const resolvedIncoterms = incoterms === "기타" && incotermsOther ? incotermsOther : incoterms;
   const resolvedDispatchDate = dispatchDate || "";
+  const invoiceInfoFromType = resolveInvoiceCodeFromType(exportType, exportTypeDetail);
+  const resolvedInvoiceCode = invoiceInfoFromType?.code || invoiceCodeInputValue || "";
+  const resolvedInvoiceLabel = invoiceInfoFromType?.label || invoiceCodeLabelInputValue || "";
+  const invoiceNote = exportNote || resolvedInvoiceLabel;
 
   const payload = {
     exportType,
@@ -1251,6 +1438,9 @@ function mapFormDataToPayload(data = {}) {
     qty: normalizedQty,
     unitPrice: normalizedUnitPrice,
     currency: firstItem.currency || "",
+    invoiceCode: resolvedInvoiceCode,
+    invoiceCodeLabel: resolvedInvoiceLabel,
+    invoiceNote,
     requester: {
       name: managerName,
       department: managerDepartment,
@@ -1309,6 +1499,9 @@ function mapFormDataToPayload(data = {}) {
     country: (destinationCountry || importCountry || firstItem.origin || originCountry || "").toUpperCase(),
     status: "대기",
   };
+  if (!payload.note && invoiceNote) {
+    payload.note = invoiceNote;
+  }
   return payload;
 }
 
@@ -1436,7 +1629,12 @@ function renderPagination() {
 
   const totalCount = lastMeta.totalCount ?? 0;
   const totalPages = lastMeta.totalPages ?? 0;
-  resultCount.textContent = `총 ${totalCount.toLocaleString("ko-KR")}건`;
+  const filteredCount = lastFilteredCount ?? 0;
+  if (currentInvoiceFilter !== INVOICE_FILTER_ALL) {
+    resultCount.textContent = `표시 ${filteredCount.toLocaleString("ko-KR")}건 / 총 ${totalCount.toLocaleString("ko-KR")}건`;
+  } else {
+    resultCount.textContent = `총 ${totalCount.toLocaleString("ko-KR")}건`;
+  }
 
   if (totalPages === 0) {
     pagination.innerHTML = `
@@ -1558,6 +1756,23 @@ function openNewDialog(options = {}) {
   const exportTypeSelect = form.querySelector("select[name=exportType]");
   const exportTypeDetailLabel = form.querySelector("[data-export-type-detail]");
   const exportTypeDetailInput = form.querySelector("input[name=exportTypeDetail]");
+  const invoiceCodeDisplay = form.querySelector("[data-invoice-code-display]");
+  const invoiceNoteInput = form.querySelector("[data-invoice-note]");
+  const invoiceCodeInput = form.querySelector("[data-invoice-code-input]");
+  const invoiceCodeLabelInput = form.querySelector("[data-invoice-code-label-input]");
+  if (invoiceNoteInput instanceof HTMLInputElement) {
+    invoiceNoteInput.dataset.manual = "";
+    invoiceNoteInput.dataset.autoValue = "";
+  }
+  if (invoiceCodeInput instanceof HTMLInputElement) {
+    invoiceCodeInput.value = "";
+  }
+  if (invoiceCodeLabelInput instanceof HTMLInputElement) {
+    invoiceCodeLabelInput.value = "";
+  }
+  if (invoiceCodeDisplay instanceof HTMLElement) {
+    invoiceCodeDisplay.textContent = "Invoice 코드가 선택되면 자동으로 표시됩니다.";
+  }
   const strategicGroup = form.querySelector("[data-required-group]");
   const strategicValueInput = form.querySelector("[data-strategic-value]");
   const strategicOptions = strategicGroup
@@ -1690,6 +1905,52 @@ function openNewDialog(options = {}) {
     }
   };
 
+  const updateInvoiceCodeState = ({ force = false } = {}) => {
+    const exportTypeValue =
+      exportTypeSelect instanceof HTMLSelectElement ? exportTypeSelect.value : "";
+    const detailValue =
+      exportTypeDetailInput instanceof HTMLInputElement ? exportTypeDetailInput.value : "";
+    let info = resolveInvoiceCodeFromType(exportTypeValue, detailValue);
+    if ((!info || !info.code) && invoiceCodeInput instanceof HTMLInputElement) {
+      const fallbackCode = invoiceCodeInput.value ?? "";
+      const fallbackLabel = invoiceCodeLabelInput instanceof HTMLInputElement ? invoiceCodeLabelInput.value ?? "" : "";
+      if (fallbackCode) {
+        info = { code: fallbackCode, label: fallbackLabel };
+      }
+    }
+    const code = info?.code ?? "";
+    const label = info?.label ?? "";
+    if (invoiceCodeDisplay instanceof HTMLElement) {
+      invoiceCodeDisplay.textContent = code
+        ? `Invoice ${code}${label ? ` (${label})` : ""}`
+        : "Invoice 코드가 선택되면 자동으로 표시됩니다.";
+    }
+    if (invoiceCodeInput instanceof HTMLInputElement) {
+      invoiceCodeInput.value = code;
+    }
+    if (invoiceCodeLabelInput instanceof HTMLInputElement) {
+      invoiceCodeLabelInput.value = label;
+    }
+    if (invoiceNoteInput instanceof HTMLInputElement) {
+      const autoValue = label || "";
+      const currentAuto = invoiceNoteInput.dataset.autoValue ?? "";
+      const normalizedCurrent = currentAuto.trim();
+      const normalizedAuto = autoValue.trim();
+      const isManual = invoiceNoteInput.dataset.manual === "true" && !force;
+      if (!isManual) {
+        invoiceNoteInput.value = autoValue;
+        invoiceNoteInput.dataset.manual = autoValue ? "false" : "";
+      }
+      invoiceNoteInput.dataset.autoValue = autoValue;
+      if (!autoValue && !invoiceNoteInput.placeholder) {
+        invoiceNoteInput.placeholder = "예: 수출계약";
+      }
+      if (!isManual && normalizedAuto !== normalizedCurrent) {
+        invoiceNoteInput.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+  };
+
   const toggleExportTypeDetail = () => {
     const needDetail = exportTypeSelect?.value === "기타";
     if (exportTypeDetailLabel) {
@@ -1707,7 +1968,29 @@ function openNewDialog(options = {}) {
       }
     }
     updateStepActionState();
+    updateInvoiceCodeState({ force: true });
   };
+
+  if (invoiceNoteInput instanceof HTMLInputElement && !invoiceNoteInput.dataset.boundInvoiceNote) {
+    invoiceNoteInput.addEventListener("input", () => {
+      const autoValue = invoiceNoteInput.dataset.autoValue ?? "";
+      const currentValue = invoiceNoteInput.value ?? "";
+      const normalizedAuto = autoValue.trim();
+      const normalizedCurrent = currentValue.trim();
+      if (!normalizedCurrent) {
+        invoiceNoteInput.dataset.manual = "";
+      } else if (normalizedCurrent !== normalizedAuto) {
+        invoiceNoteInput.dataset.manual = "true";
+      } else {
+        invoiceNoteInput.dataset.manual = "false";
+      }
+    });
+    invoiceNoteInput.dataset.boundInvoiceNote = "true";
+  }
+  if (exportTypeDetailInput instanceof HTMLInputElement && !exportTypeDetailInput.dataset.boundInvoiceDetail) {
+    exportTypeDetailInput.addEventListener("input", () => updateInvoiceCodeState({ force: true }));
+    exportTypeDetailInput.dataset.boundInvoiceDetail = "true";
+  }
 
   const setupExpertSearch = () => {
     if (!expertSearchContainer) return;
@@ -4068,6 +4351,7 @@ function openNewDialog(options = {}) {
     });
     dialog.close();
     renderRows(getCombinedRows(lastFetchedItems), { page: currentPage });
+    renderPagination();
     updateContinueButtonVisibility();
   };
 
@@ -4176,6 +4460,18 @@ function openNewDialog(options = {}) {
     }
     if (fields.exportTypeDetail !== undefined) {
       setFieldValue("exportTypeDetail", fields.exportTypeDetail);
+    }
+    if (fields.invoiceCode !== undefined) {
+      setFieldValue("invoiceCode", fields.invoiceCode);
+    }
+    if (fields.invoiceCodeLabel !== undefined) {
+      setFieldValue("invoiceCodeLabel", fields.invoiceCodeLabel);
+    }
+    if (fields.exportNote !== undefined) {
+      setFieldValue("exportNote", fields.exportNote);
+      if (invoiceNoteInput instanceof HTMLInputElement) {
+        invoiceNoteInput.dataset.manual = fields.exportNote ? "true" : "";
+      }
     }
     if (fields.projectName !== undefined) {
       setFieldValue("projectName", fields.projectName);
@@ -4312,6 +4608,7 @@ function openNewDialog(options = {}) {
         expertState.clearSelection({ silent: true });
       }
     }
+    updateInvoiceCodeState({ force: !fields.exportNote });
   };
 
   if (fieldValues) {

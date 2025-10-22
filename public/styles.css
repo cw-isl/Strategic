@@ -41,6 +41,10 @@ h1,h2,h3{margin:0 0 .75rem}
 .search-input input[type="text"]{width:100%;padding:.65rem .75rem;border:1px solid var(--line);border-radius:6px;background:#fff}
 .search-actions{display:flex;justify-content:flex-end}
 .search-actions .btn{width:100%}
+.invoice-filter-group{margin-top:.85rem;display:flex;flex-wrap:wrap;gap:.4rem;grid-column:1 / -1}
+.filter-btn{padding:.4rem .65rem;font-size:.78rem;font-weight:600;border-color:#c6ccdd;color:#2a3661;background:#fff}
+.filter-btn[aria-pressed="true"]{background:var(--blue);color:#fff;border-color:#0e2a5b}
+.filter-btn:hover{background:#eef3ff}
 @media (min-width:600px){
   .search-panel{grid-template-columns:minmax(0,1fr) auto;align-items:stretch}
   .search-actions{justify-content:flex-start}
@@ -150,6 +154,8 @@ dialog::backdrop{background:rgba(0,0,0,.35)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
 .grid [data-span="full"]{grid-column:1 / -1}
 label{display:grid;gap:.3rem;font-weight:600}
+.invoice-code-field{display:flex;align-items:center;justify-content:flex-start;padding:.35rem .45rem;background:#f5f7ff;border:1px solid #dfe5ff;border-radius:8px;min-height:48px}
+.invoice-code-chip{display:inline-flex;align-items:center;gap:.35rem;font-weight:700;color:#153e8a;font-size:.85rem}
 .checkbox-group label{display:inline-flex;align-items:center;gap:.45rem;font-weight:600}
 .checkbox-group input[type="checkbox"]{width:18px;height:18px}
 .field-compact{gap:.15rem}

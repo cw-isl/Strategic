@@ -63,6 +63,14 @@
             <label data-export-type-detail hidden>기타 사유<input name="exportTypeDetail" placeholder="수출유형을 입력해주세요" /></label>
             <label>프로젝트 명<input name="projectName" required placeholder="예: 프로젝트명" /></label>
             <label>프로젝트 코드<input name="projectCode" required placeholder="예: PJT-2024-001" /></label>
+            <div class="invoice-code-field" data-span="full">
+              <span class="invoice-code-chip" data-invoice-code-display>Invoice 코드가 선택되면 자동으로 표시됩니다.</span>
+            </div>
+            <label data-span="full">비고 (Invoice)
+              <input name="exportNote" data-invoice-note placeholder="예: 수출계약" />
+            </label>
+            <input type="hidden" name="invoiceCode" data-invoice-code-input />
+            <input type="hidden" name="invoiceCodeLabel" data-invoice-code-label-input />
           </div>
         </section>
         <section class="step" data-step="1" data-step-title="전략물자 여부 확인">
