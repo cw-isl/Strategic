@@ -22,20 +22,168 @@ const INVOICE_FILTER_NO_CODE = "no-code";
 let currentInvoiceFilter = INVOICE_FILTER_ALL;
 
 const EXPORT_TYPE_INVOICE_CODES = {
-  정상판매: { code: "SEA", label: "수출계약" },
-  "A/S": { code: "SEC", label: "A/S" },
-  BMT: { code: "SAD", label: "BMT" },
-  장애교체: { code: "SET", label: "장애교체" },
-  TEST: { code: "SRT", label: "TEST" },
-  Stock: { code: "SST", label: "Stock" },
-  임대: { code: "SCS", label: "임대" },
-  유상임대: { code: "SCD", label: "유상임대" },
-  "기타 장애교체": { code: "SGE", label: "기타 장애교체" },
-  "기타 A/S": { code: "SGA", label: "기타 A/S" },
-  제조사샘플: { code: "SMP", label: "제조사샘플" },
-  개발용샘플: { code: "SDE", label: "개발용샘플" },
+  정상판매: { code: "SEA", label: "정상판매" },
+  "A/S": { code: "SEE", label: "A/S" },
+  BMT: { code: "SED", label: "BMT" },
+  장애교체: { code: "SEC", label: "장애교체" },
+  TEST: { code: "SEB", label: "TEST" },
+  Stock: { code: "SEB", label: "Stock" },
+  임대: { code: "SEB", label: "임대" },
+  유상임대: { code: "SEB", label: "유상임대" },
+  "기타 장애교체": { code: "SEC", label: "기타 장애교체" },
+  "기타 A/S": { code: "SEE", label: "기타 A/S" },
+  제조사샘플: { code: "SED", label: "제조사샘플" },
+  개발용샘플: { code: "SED", label: "개발용샘플" },
   기타: { code: "SET", label: "기타" },
 };
+
+function parsePositiveInteger(value) {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!str) return null;
+  const num = Number(str);
+  if (!Number.isFinite(num)) return null;
+  const int = Math.floor(num);
+  if (int <= 0) return null;
+  return int;
+}
+
+function formatInvoiceDateKey(value) {
+  if (!value) return "";
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const eightDigit = trimmed.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (eightDigit) {
+      const year = Number(eightDigit[1]);
+      const month = Number(eightDigit[2]);
+      const day = Number(eightDigit[3]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${String(year).padStart(4, "0")}${String(month).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+      }
+    }
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return `${isoMatch[1]}${isoMatch[2]}${isoMatch[3]}`;
+    }
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function resolveExistingInvoiceNumber(row = {}) {
+  if (!row || typeof row !== "object") return "";
+  const candidates = [
+    row.invoiceNumber,
+    row.invoiceNo,
+    row.invoice_no,
+    row.invoice_number,
+    row.invoiceNumberFull,
+    row.invoice_number_full,
+    row._computedInvoiceNumber,
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    const str = String(candidate).trim();
+    if (str) return str;
+  }
+  return "";
+}
+
+function extractSequenceFromInvoiceNumber(invoiceNumber) {
+  if (typeof invoiceNumber !== "string") return null;
+  const trimmed = invoiceNumber.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/^[A-Z]{2,}\d{8}_(\d{2,})$/i);
+  if (!match) return null;
+  return parsePositiveInteger(match[1]);
+}
+
+function formatInvoiceNumber({ code, date, sequence, existingNumber } = {}) {
+  const existing = typeof existingNumber === "string" ? existingNumber.trim() : "";
+  if (existing && /^[A-Z]{2,}\d{8}_(\d{2,})$/i.test(existing)) {
+    return existing.toUpperCase();
+  }
+  const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
+  if (!normalizedCode) return "";
+  const dateKey = formatInvoiceDateKey(date);
+  let resolvedSeq = parsePositiveInteger(sequence);
+  if (!resolvedSeq && existing) {
+    resolvedSeq = extractSequenceFromInvoiceNumber(existing);
+  }
+  const seqPart = resolvedSeq ? String(resolvedSeq).padStart(2, "0") : "";
+  if (!dateKey && !seqPart) {
+    return normalizedCode;
+  }
+  if (!seqPart) {
+    return `${normalizedCode}${dateKey}`;
+  }
+  if (!dateKey) {
+    return `${normalizedCode}_${seqPart}`;
+  }
+  return `${normalizedCode}${dateKey}_${seqPart}`;
+}
+
+function resolveInvoiceSequence(row = {}) {
+  if (!row || typeof row !== "object") return null;
+  const candidates = [
+    row.invoiceSequence,
+    row.invoice_sequence,
+    row.invoiceSeq,
+    row.invoice_seq,
+    row.invoiceSequenceNumber,
+    row.invoice_sequence_number,
+    row.invoiceNumberSequence,
+    row.invoice_number_sequence,
+    row.invoiceSerial,
+    row.invoice_serial,
+    row.invoiceOrder,
+    row.invoice_order,
+    row._computedInvoiceSequence,
+  ];
+  for (const candidate of candidates) {
+    const parsed = parsePositiveInteger(candidate);
+    if (parsed) return parsed;
+  }
+  const fromNumber = extractSequenceFromInvoiceNumber(resolveExistingInvoiceNumber(row));
+  if (fromNumber) return fromNumber;
+  return null;
+}
+
+function resolveInvoiceDateValue(row = {}) {
+  if (!row || typeof row !== "object") return null;
+  return (
+    row.dispatchDate ||
+    row.shipmentDate ||
+    (row.shipment && (row.shipment.dispatchDate || row.shipment.shipmentDate)) ||
+    row.createdAt ||
+    null
+  );
+}
+
+function estimateNextInvoiceSequence(code, dateKey) {
+  const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
+  const normalizedDate = typeof dateKey === "string" ? dateKey.trim() : "";
+  if (!normalizedCode || !normalizedDate) return null;
+  let maxSeq = 0;
+  for (const row of lastCombinedRows) {
+    if (!row || typeof row !== "object") continue;
+    const info = resolveInvoiceInfo(row);
+    if (!info || !info.code || String(info.code).toUpperCase() !== normalizedCode) continue;
+    const rowDateKey = formatInvoiceDateKey(resolveInvoiceDateValue(row));
+    if (rowDateKey !== normalizedDate) continue;
+    const seq = resolveInvoiceSequence(row);
+    if (seq && seq > maxSeq) {
+      maxSeq = seq;
+    }
+  }
+  if (maxSeq > 0) return maxSeq + 1;
+  return 1;
+}
 
 const toFlagEmoji = (countryCode = "") => {
   if (typeof countryCode !== "string" || countryCode.length !== 2) return "🏳";
@@ -263,6 +411,16 @@ function mapRowToFormValues(row = {}) {
   setField("invoiceCodeLabel", invoiceInfo?.label ?? "");
   const invoiceNote = row.invoiceNote ?? invoiceInfo?.label ?? "";
   setField("exportNote", invoiceNote);
+  const invoiceSequenceValue = resolveInvoiceSequence(row);
+  setField("invoiceSequence", invoiceSequenceValue ?? "");
+  const invoiceExistingNumber = resolveExistingInvoiceNumber(row);
+  const invoiceNumberValue = formatInvoiceNumber({
+    code: invoiceInfo?.code ?? "",
+    date: resolveInvoiceDateValue(row),
+    sequence: invoiceSequenceValue,
+    existingNumber: invoiceExistingNumber,
+  });
+  setField("invoiceNumber", invoiceNumberValue);
 
   setField("projectName", row.projectName ?? row.projectNameDisplay ?? "");
   setField("projectCode", row.projectCode ?? row.projectCodeDisplay ?? "");
@@ -669,18 +827,12 @@ function renderExport() {
         <button type="button" class="btn filter-btn" data-invoice-filter="all" aria-pressed="true">전체</button>
         <button type="button" class="btn filter-btn" data-invoice-filter="missing-items">항목없음</button>
         <button type="button" class="btn filter-btn" data-invoice-filter="no-code">Invoice 없음</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SEA" title="수출계약">SEA</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SEC" title="A/S">SEC</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SAD" title="BMT">SAD</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SET" title="장애교체/기타">SET</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SRT" title="TEST">SRT</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SST" title="Stock">SST</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SCS" title="임대">SCS</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SCD" title="유상임대">SCD</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SGE" title="기타 장애교체">SGE</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SGA" title="기타 A/S">SGA</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SMP" title="제조사샘플">SMP</button>
-        <button type="button" class="btn filter-btn" data-invoice-filter="SDE" title="개발용샘플">SDE</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEA" title="정상판매">SEA</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEE" title="A/S · 기타 A/S">SEE</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SED" title="BMT · 제조사샘플 · 개발용샘플">SED</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEC" title="장애교체 · 기타 장애교체">SEC</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SEB" title="TEST · Stock · 임대 · 유상임대">SEB</button>
+        <button type="button" class="btn filter-btn" data-invoice-filter="SET" title="기타">SET</button>
       </div>
     </section>
 
@@ -882,6 +1034,8 @@ function renderRows(rows = [], meta = {}) {
     return escapeHtml(String(value));
   };
 
+  const invoiceSequenceTracker = new Map();
+
   tbody.innerHTML = filteredRows
     .map((row, idx) => {
       const seq = startIndex + idx + 1;
@@ -926,7 +1080,46 @@ function renderRows(rows = [], meta = {}) {
       const invoiceInfo = resolveInvoiceInfo(row);
       const hasItems = rowHasItemDetails(row);
       const invoicePieces = [];
-      if (invoiceInfo && invoiceInfo.code) {
+      const invoiceExistingNumber = resolveExistingInvoiceNumber(row);
+      const invoiceDateKey = formatInvoiceDateKey(shipmentDateValue);
+      const invoiceCodeNormalized = invoiceInfo?.code ? String(invoiceInfo.code).trim().toUpperCase() : "";
+      let invoiceSequenceValue = resolveInvoiceSequence(row);
+      if (invoiceCodeNormalized && invoiceDateKey) {
+        const trackerKey = `${invoiceCodeNormalized}|${invoiceDateKey}`;
+        if (invoiceSequenceValue) {
+          const currentMax = invoiceSequenceTracker.get(trackerKey) ?? 0;
+          if (invoiceSequenceValue > currentMax) {
+            invoiceSequenceTracker.set(trackerKey, invoiceSequenceValue);
+          }
+        } else {
+          const nextSeq = (invoiceSequenceTracker.get(trackerKey) ?? 0) + 1;
+          invoiceSequenceValue = nextSeq;
+          invoiceSequenceTracker.set(trackerKey, nextSeq);
+        }
+      }
+      const invoiceNumber = formatInvoiceNumber({
+        code: invoiceInfo?.code ?? "",
+        date: shipmentDateValue,
+        sequence: invoiceSequenceValue,
+        existingNumber: invoiceExistingNumber,
+      });
+      if (invoiceSequenceValue) {
+        row._computedInvoiceSequence = invoiceSequenceValue;
+      } else {
+        delete row._computedInvoiceSequence;
+      }
+      if (invoiceNumber) {
+        row._computedInvoiceNumber = invoiceNumber;
+      } else {
+        delete row._computedInvoiceNumber;
+      }
+      if (invoiceNumber) {
+        const numberText = escapeHtml(String(invoiceNumber));
+        invoicePieces.push(numberText);
+        if (invoiceInfo?.label) {
+          invoicePieces.push(escapeHtml(String(invoiceInfo.label)));
+        }
+      } else if (invoiceInfo && invoiceInfo.code) {
         const codeText = escapeHtml(String(invoiceInfo.code));
         const labelText = invoiceInfo.label ? escapeHtml(String(invoiceInfo.label)) : "";
         invoicePieces.push(labelText ? `Invoice ${codeText} (${labelText})` : `Invoice ${codeText}`);
@@ -1760,6 +1953,9 @@ function openNewDialog(options = {}) {
   const invoiceNoteInput = form.querySelector("[data-invoice-note]");
   const invoiceCodeInput = form.querySelector("[data-invoice-code-input]");
   const invoiceCodeLabelInput = form.querySelector("[data-invoice-code-label-input]");
+  const dispatchDateInput = form.querySelector("input[name=dispatchDate]");
+  delete form.dataset.invoiceSequence;
+  delete form.dataset.invoiceExistingNumber;
   if (invoiceNoteInput instanceof HTMLInputElement) {
     invoiceNoteInput.dataset.manual = "";
     invoiceNoteInput.dataset.autoValue = "";
@@ -1920,10 +2116,46 @@ function openNewDialog(options = {}) {
     }
     const code = info?.code ?? "";
     const label = info?.label ?? "";
+    const dispatchDateValue =
+      dispatchDateInput instanceof HTMLInputElement ? dispatchDateInput.value : "";
+    const dateKey = formatInvoiceDateKey(dispatchDateValue);
+    const existingNumber = form.dataset.invoiceExistingNumber ?? "";
+    let sequence = parsePositiveInteger(form.dataset.invoiceSequence);
+    if (!sequence && existingNumber) {
+      sequence = extractSequenceFromInvoiceNumber(existingNumber);
+    }
+    if (!sequence && code && dateKey) {
+      sequence = estimateNextInvoiceSequence(code, dateKey);
+    }
+    const invoiceNumberText = formatInvoiceNumber({
+      code,
+      date: dispatchDateValue,
+      sequence,
+      existingNumber,
+    });
+    if (invoiceNumberText) {
+      form.dataset.invoiceExistingNumber = invoiceNumberText;
+      if (sequence) {
+        form.dataset.invoiceSequence = String(sequence);
+      }
+    } else if (
+      !code ||
+      (existingNumber &&
+        !existingNumber.toUpperCase().startsWith(String(code).toUpperCase()))
+    ) {
+      delete form.dataset.invoiceExistingNumber;
+      delete form.dataset.invoiceSequence;
+    }
     if (invoiceCodeDisplay instanceof HTMLElement) {
-      invoiceCodeDisplay.textContent = code
-        ? `Invoice ${code}${label ? ` (${label})` : ""}`
-        : "Invoice 코드가 선택되면 자동으로 표시됩니다.";
+      if (invoiceNumberText) {
+        invoiceCodeDisplay.textContent = label
+          ? `${invoiceNumberText}${label ? ` (${label})` : ""}`
+          : invoiceNumberText;
+      } else if (code) {
+        invoiceCodeDisplay.textContent = `Invoice ${code}${label ? ` (${label})` : ""}`;
+      } else {
+        invoiceCodeDisplay.textContent = "Invoice 코드가 선택되면 자동으로 표시됩니다.";
+      }
     }
     if (invoiceCodeInput instanceof HTMLInputElement) {
       invoiceCodeInput.value = code;
@@ -1986,6 +2218,12 @@ function openNewDialog(options = {}) {
       }
     });
     invoiceNoteInput.dataset.boundInvoiceNote = "true";
+  }
+  if (dispatchDateInput instanceof HTMLInputElement && !dispatchDateInput.dataset.boundInvoiceDate) {
+    const handleDispatchDateChange = () => updateInvoiceCodeState({ force: true });
+    dispatchDateInput.addEventListener("input", handleDispatchDateChange);
+    dispatchDateInput.addEventListener("change", handleDispatchDateChange);
+    dispatchDateInput.dataset.boundInvoiceDate = "true";
   }
   if (exportTypeDetailInput instanceof HTMLInputElement && !exportTypeDetailInput.dataset.boundInvoiceDetail) {
     exportTypeDetailInput.addEventListener("input", () => updateInvoiceCodeState({ force: true }));
@@ -2835,6 +3073,8 @@ function openNewDialog(options = {}) {
         state.currentMonth = normalized.getMonth();
         state.focusDate = new Date(normalized);
         hiddenInput.value = formatIsoDate(normalized);
+        hiddenInput.dispatchEvent(new Event("input", { bubbles: true }));
+        hiddenInput.dispatchEvent(new Event("change", { bubbles: true }));
         renderCalendar({ focus });
         updateStepActionState();
       };
@@ -4574,6 +4814,25 @@ function openNewDialog(options = {}) {
     }
     if (fields.paymentTerms !== undefined) {
       setFieldValue("paymentTerms", fields.paymentTerms);
+    }
+    if (Object.prototype.hasOwnProperty.call(fields, "invoiceNumber")) {
+      const numberValue =
+        fields.invoiceNumber === undefined || fields.invoiceNumber === null
+          ? ""
+          : String(fields.invoiceNumber).trim();
+      if (numberValue) {
+        form.dataset.invoiceExistingNumber = numberValue;
+      } else {
+        delete form.dataset.invoiceExistingNumber;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(fields, "invoiceSequence")) {
+      const sequenceValue = parsePositiveInteger(fields.invoiceSequence);
+      if (sequenceValue) {
+        form.dataset.invoiceSequence = String(sequenceValue);
+      } else {
+        delete form.dataset.invoiceSequence;
+      }
     }
     if (fields.strategicFlag !== undefined) {
       const value = fields.strategicFlag === undefined || fields.strategicFlag === null

@@ -147,6 +147,8 @@ const exportsData = [
     invoiceCode: "SEA",
     invoiceCodeLabel: "수출계약",
     invoiceNote: "수출계약",
+    invoiceSequence: 1,
+    invoiceNumber: "SEA20240520_01",
     permitStatus: "신청완료",
     permitType: "전략물자 수출허가",
     permitNumber: "STP-2024-0088",
