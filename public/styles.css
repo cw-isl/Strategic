@@ -10,7 +10,7 @@ body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Apple SD Got
 
 /* Topbar */
 .topbar{position:sticky;top:0;z-index:10;background:var(--blue);color:#fff;border-bottom:1px solid #0e2a5b}
-.topbar-inner{max-width:var(--maxw);margin:0 auto;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;justify-content:flex-start}
+.topbar-inner{max-width:var(--maxw);margin:0;display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;justify-content:flex-start}
 .tab{color:#fff;text-decoration:none;padding:.35rem .6rem;border-radius:2px;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;background:transparent;border:1px solid transparent}
 .tab[aria-current="page"]{background:rgba(255,255,255,.15)}
 .menu{position:relative}
