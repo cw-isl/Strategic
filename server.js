@@ -646,7 +646,8 @@ app.post("/api/exports", (req, res) => {
   }
 
   if (!row.currency) {
-    const firstCurrency = items.find((item) => item && item.currency)?.currency;
+    const firstCurrencyItem = items.find((item) => item && item.currency);
+    const firstCurrency = firstCurrencyItem ? firstCurrencyItem.currency : undefined;
     if (firstCurrency) {
       row.currency = String(firstCurrency);
     }
@@ -666,7 +667,7 @@ app.post("/api/exports", (req, res) => {
 
 app.get("/api/exports/:id/invoice.pdf", (req, res) => {
   const { id } = req.params;
-  const idStr = String(id ?? "").trim();
+  const idStr = String(id !== undefined && id !== null ? id : "").trim();
   if (!idStr) {
     return res.status(404).json({ ok: false, error: "대상을 찾을 수 없습니다." });
   }
