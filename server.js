@@ -15,6 +15,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
 
 /** --- 미니 데이터 저장(메모리) --- */
 let seq = 6;
@@ -735,6 +736,7 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+  const displayedHost = HOST === "0.0.0.0" ? "localhost" : HOST;
+  console.log(`✅ Server running on http://${displayedHost}:${PORT}`);
 });
