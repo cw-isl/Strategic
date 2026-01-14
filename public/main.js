@@ -805,14 +805,6 @@ function renderDashboard(pathname = "/dashboard") {
       </div>
       <a class="btn primary" href="/export" data-link role="button">수출현황 바로가기</a>
     </section>
-    <section class="card quick-guide">
-      <h2>빠른 가이드</h2>
-      <ul class="guide-list">
-        <li>검색창에 품목, 국가 또는 상태를 입력해 원하는 데이터를 빠르게 찾을 수 있습니다.</li>
-        <li>새로운 수출 건은 <strong>수출 신규등록</strong> 버튼으로 즉시 추가하세요.</li>
-        <li>등록된 정보는 실시간으로 반영되어 목록에서 바로 확인할 수 있습니다.</li>
-      </ul>
-    </section>
   `;
   app.focus();
 }
