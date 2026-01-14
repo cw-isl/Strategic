@@ -67,9 +67,6 @@ h1,h2,h3{margin:0 0 .75rem}
   .hero .btn{align-self:center;width:auto}
 }
 
-.quick-guide h2{margin:0 0 .75rem}
-.guide-list{margin:0;padding-left:1.2rem;color:#444;line-height:1.6}
-.guide-list li+li{margin-top:.35rem}
 
 /* Export page */
 .page-header{display:flex;flex-direction:column;gap:1rem}
